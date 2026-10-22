@@ -18,7 +18,7 @@ function Shell({ children, wide = false }: { children: ReactNode; wide?: boolean
     <main className="relative min-h-dvh overflow-hidden bg-page px-4 py-10 sm:px-8">
       <div className="pointer-events-none absolute -top-40 left-1/2 size-[760px] -translate-x-1/2 rounded-full bg-gold/[0.07] blur-3xl" />
       <div className={cn('relative mx-auto', wide ? 'max-w-5xl' : 'max-w-md')}>
-        <div className="mb-8 flex justify-center"><Brand subtitle="Venue & event operations" /></div>
+        <div className="mb-8 flex justify-center"><Brand size="lg" subtitle="Venue & event operations" /></div>
         {children}
       </div>
     </main>

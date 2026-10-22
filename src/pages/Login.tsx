@@ -52,7 +52,7 @@ export function Login() {
     <main className="relative grid min-h-dvh place-items-center overflow-hidden bg-page px-4 py-10">
       <div className="pointer-events-none absolute -top-40 left-1/2 size-[640px] -translate-x-1/2 rounded-full bg-gold/[0.06] blur-3xl" />
       <div className="relative w-full max-w-md">
-        <div className="mb-8 flex justify-center"><Brand subtitle="Venue & event operations" /></div>
+        <div className="mb-8 flex justify-center"><Brand size="lg" subtitle="Venue & event operations" /></div>
         <form onSubmit={submit} className="fade-up rounded-3xl border border-border bg-surface p-8 card-glow">
           <div className="mb-6 flex items-center gap-3">
             <span className="grid size-11 place-items-center rounded-2xl bg-gold/12 text-gold">{factorId ? <ShieldCheck size={20} /> : <Lock size={20} />}</span>

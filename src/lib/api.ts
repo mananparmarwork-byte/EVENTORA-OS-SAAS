@@ -5,7 +5,7 @@ import { cleanBusiness, cleanPayment } from './settings';
 import { cloneCatalog } from './catalog';
 import { PERIODS, PRICES } from './plans';
 import { billDeleted, billUpdated, statusChanged } from './activity';
-import { DEFAULT_ACTIVITY_SETTINGS, DEFAULT_NUMBERING, DEFAULT_PERMISSIONS, type ActivityDraft, type ActivityEntry, type ActivitySettings, type BusinessProfile, type CatalogCategory, type NumberingSettings, type PaymentSettings, type Quote, type QuoteInput, type QuotePricing, type QuoteStatus, type Session, type StaffMember, type StaffPermissions, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon } from './types';
+import { DEFAULT_ACTIVITY_SETTINGS, DEFAULT_NUMBERING, DEFAULT_PERMISSIONS, type ActivityDraft, type ActivityEntry, type ActivitySettings, type BusinessProfile, type CatalogCategory, type NumberingSettings, type PaymentSettings, type Quote, type QuoteInput, type QuotePricing, type QuoteStatus, type Session, type StaffMember, type StaffPermissions, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type PurchaseStatus } from './types';
 
 const BUSINESS_FALLBACK = cleanBusiness(null);
 const PAYMENT_FALLBACK = cleanPayment(null);
@@ -207,6 +207,19 @@ export const backendMode = () => be().mode;
 /* ------------------------------------------------------------------ SaaS --- */
 export const signUp = (email: string, password: string) => be().signUp(email, password);
 export const createTenant = (name: string, slug: string) => be().createTenant(name, slug);
+export const createPurchase = (input: { email: string; period: BillingPeriod; coupon?: string; businessName?: string }) => be().createPurchase(input);
+export const purchaseStatus = (q: { id?: string; email?: string }) => be().purchaseStatus(q);
+export const savePurchaseProfile = (id: string, businessName: string) => be().savePurchaseProfile(id, businessName);
+/** Polls while the payment is still on its way. */
+export function usePurchaseStatus(q: { id?: string; email?: string }, enabled = true) {
+  return useQuery<PurchaseStatus>({
+    queryKey: ['purchase', q.id ?? '', q.email ?? ''],
+    queryFn: () => be().purchaseStatus(q),
+    enabled,
+    retry: false,
+    refetchInterval: (query) => (query.state.data?.found && query.state.data.status === 'pending' ? 4000 : false),
+  });
+}
 export const startCheckout = (period: BillingPeriod, coupon?: string) => be().startCheckout(period, coupon);
 export const cancelAutopay = () => be().cancelAutopay();
 export const checkCoupon = (code: string, period: BillingPeriod | null) => be().checkCoupon(code, period);

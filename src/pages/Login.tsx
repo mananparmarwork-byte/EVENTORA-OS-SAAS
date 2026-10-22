@@ -72,7 +72,7 @@ export function Login() {
           <Button type="submit" variant="gold" size="lg" className="mt-6 w-full" disabled={busy}>{busy ? 'Please wait…' : factorId ? 'Verify and sign in' : 'Sign in'}</Button>
           {factorId && <button type="button" onClick={() => void cancelMfa()} className="mt-4 w-full text-center text-xs text-text-secondary hover:text-gold">Cancel and go back</button>}
         </form>
-        <p className="mt-4 text-center text-xs text-text-disabled">New business? <Link href="/signup" className="text-gold hover:underline">Start your free trial</Link>. Employees: your owner creates your login.</p>
+        <p className="mt-4 text-center text-xs text-text-disabled">New business? <Link href="/buy" className="text-gold hover:underline">Choose a plan</Link> or <Link href="/signup" className="text-gold hover:underline">start a free trial</Link>. Already paid, no login yet? <Link href="/welcome" className="text-gold hover:underline">Set up your admin login</Link>. Employees: your owner creates your login.</p>
         <Link href="/" className="mt-4 flex items-center justify-center gap-2 text-sm text-text-secondary hover:text-gold"><ArrowLeft size={14} /> Back to home</Link>
       </div>
     </main>

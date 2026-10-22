@@ -146,3 +146,13 @@ export type CouponKind = 'percent' | 'amount' | 'free_days';
 /** `value`: percent (1-100), rupees off, or days. */
 export type Coupon = { code: string; kind: CouponKind; value: number; periods: BillingPeriod[] | null; maxUses: number | null; usedCount: number; validUntil: string | null; active: boolean; note: string };
 export type CouponCheck = { ok: boolean; error?: string; kind?: CouponKind; code?: string; value?: number; days?: number; basePrice?: number; finalPrice?: number };
+
+/* ---- buy first: pay on the website, the admin + business are created automatically at the first sign-in ---- */
+export type PurchaseState = 'pending' | 'paid' | 'claimed' | 'failed';
+export type PurchaseStatus = {
+  found: boolean; status?: PurchaseState; email?: string; period?: BillingPeriod; amount?: number; periodEnd?: string | null;
+  hasAccount?: boolean;            // a login with this email already exists
+  hasWorkspace?: boolean;          // a business with this admin email already exists (a renewal: it is reconnected, nothing is lost)
+  workspaceName?: string | null; businessName?: string | null;
+};
+export type NewPurchase = { purchaseId: string; url: string; amount: number };

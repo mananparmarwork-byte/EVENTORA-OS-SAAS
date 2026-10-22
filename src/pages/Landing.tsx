@@ -61,7 +61,7 @@ export function Landing() {
           <Brand subtitle="Venue & event operations" />
           <div className="flex items-center gap-2">
             <Link href="/login"><Button variant="ghost">Sign in</Button></Link>
-            <Link href="/signup"><Button variant="gold">Start free trial</Button></Link>
+            <Link href="/buy"><Button variant="gold">Choose a plan</Button></Link>
           </div>
         </div>
       </header>
@@ -73,10 +73,10 @@ export function Landing() {
           <h1 className="mt-4 font-display text-4xl font-semibold leading-tight sm:text-6xl">Run your venue from one calm dashboard.</h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-text-secondary">Quotations, bookings, payments and your team in one place, with a full record of everything that happens.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link href="/signup"><Button variant="gold" size="lg">Start your free trial</Button></Link>
-            <a href="#pricing"><Button variant="outline" size="lg">See pricing</Button></a>
+            <Link href="/buy"><Button variant="gold" size="lg">Choose your plan</Button></Link>
+            <Link href="/signup"><Button variant="outline" size="lg">Start free trial</Button></Link>
           </div>
-          <p className="mt-3 text-xs text-text-disabled">No card needed · cancel anytime</p>
+          <p className="mt-3 text-xs text-text-disabled">Pay, set a password, and your workspace opens by itself · cancel anytime · <a href="#pricing" className="text-gold hover:underline">see pricing</a></p>
         </div>
       </section>
 
@@ -92,7 +92,12 @@ export function Landing() {
         <div className="mx-auto max-w-6xl">
           <h2 className="text-center font-display text-3xl font-semibold">Simple pricing</h2>
           <p className="mx-auto mb-8 mt-2 max-w-md text-center text-sm text-text-secondary">One plan with everything included. Pay monthly, quarterly or yearly.</p>
-          <PricingCards cta={() => <Link href="/signup"><Button variant="gold" size="lg" className="w-full">Start free trial</Button></Link>} />
+          <PricingCards cta={(p) => (
+            <div className="space-y-3">
+              <Link href={`/buy/${p}`}><Button variant="gold" size="lg" className="w-full">Buy this plan</Button></Link>
+              <Link href="/signup" className="block text-xs text-text-secondary hover:text-gold">Or try it free first</Link>
+            </div>
+          )} />
         </div>
       </section>
 

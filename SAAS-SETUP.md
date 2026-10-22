@@ -16,7 +16,8 @@
 - Your existing data became the first business (web name `eventora`); you are its owner and the software owner.
 
 ## 1. Database (Supabase -> SQL Editor, each file as a new query, in this order)
-`01` -> `02` -> `03` (already done) -> `05-saas-tables` -> `06-saas-functions-security` -> `07-saas-check` -> `08-saas-billing` -> `10-billing-check` -> **`11-saas-security-team`** -> **`12-security-check`**.
+`01` -> `02` -> `03` (already done) -> `05-saas-tables` -> `06-saas-functions-security` -> `07-saas-check` -> `08-saas-billing` -> `10-billing-check` -> **`11-saas-security-team`** -> `12-security-check` -> **`13-purchase-onboarding`** -> `13-check`.
+- File 13 (buy first, automatic admin, renewal reconnect) is new. **Run it last**; if you ever re-run 06, 08 or 11, run 13 again.
 - Every check file must show only OK.
 - **Always run `11` last.** If you ever re-run `06` or `08`, run `11` again afterwards.
 - Take a backup first (Database -> Backups): files 05 and 11 change keys and rules.
@@ -37,6 +38,7 @@ supabase link --project-ref <your-project-ref>
 supabase functions deploy manage-staff
 supabase functions deploy create-checkout
 supabase functions deploy manage-subscription
+supabase functions deploy create-purchase --no-verify-jwt
 supabase functions deploy razorpay-webhook --no-verify-jwt
 supabase functions deploy send-reminders --no-verify-jwt
 ```
@@ -90,3 +92,30 @@ supabase functions deploy send-reminders --no-verify-jwt
 - Hostinger/PHP stays single-business; SaaS needs Supabase.
 - Legal and tax (terms, privacy, GST on your invoices, refund policy) are not included: get them reviewed.
 - Not yet built: per-plan feature limits (only an employee cap of 20), custom domains, invoices for your own subscription sales, data-export button.
+
+
+## 9. BUY FIRST: automatic admin + same business again on renewal (new, file 13)
+**Customer flow**
+1. Website -> **Choose a plan** (`/#/buy`) -> types the **admin email** -> pays on Razorpay (autopay). No account exists yet.
+2. The Buy page waits and moves on by itself when the payment arrives -> **thank-you page** (`/#/welcome/<order id>`): confirms the payment, asks for a business name and a password.
+3. **Automatic admin:** the first sign-in (right after setting the password, or after confirming the email) runs the database function `claim_purchase()`: it creates the business, makes that login its **owner**, starts the plan. No separate "create organisation" step.
+4. A quick-start screen opens (business details, catalog, employees, first quotation).
+
+**Renewal / coming back with the SAME admin email**
+- Every business stores its admin email (`tenants.owner_email`, unique: one admin email = one business).
+- Paying again with that email never creates a new business. The payment webhook finds the old business by email and extends its plan **even before anybody signs in**. At the next sign-in the person is attached to the old business again, so bills, catalog, settings, employees and activity are all still there. This also works if the old login was deleted and re-created with the same email.
+- The thank-you page then says "Welcome back" and the quick-start screen shows "your bills are right where you left them".
+- Guards: an email with autopay on, or a plan/trial with more than 3 days left, cannot buy again (no double charge, no lost days); the message tells them to sign in and use Billing.
+- The old free-trial signup follows the same rule (same email = same business).
+- Renewing inside the app (Billing) works as before.
+
+**Required settings**
+- Supabase -> Authentication -> **Confirm email must stay ON.** The business is only handed to a login whose email is confirmed; with confirmation off, a stranger could register a buyer's email first and take the business.
+- Deploy `create-purchase` (see section 3). `razorpay-webhook` was updated: redeploy it. Webhook events and secrets are unchanged.
+- Test in Razorpay TEST mode: buy with a new email -> thank-you page -> set password -> workspace opens. Then make a bill, switch the plan to expired (All businesses -> Suspend), buy again with the same email -> sign in -> the bill must still be there.
+
+**Honest notes**
+- The SQL was run against a stand-in database (new purchase, first login, duplicate calls, deleted login + renewal, early-renewal guard, coupons, permissions): all behaved as designed. It was not run on a real Supabase project, and the Edge Functions and Razorpay were not called. Test with throwaway emails first.
+- Razorpay's hosted payment page has no "return to site" button for subscriptions, which is why the Buy page stays open in the first tab and continues by itself. If the tab is closed, the customer opens `/#/welcome`, enters the email they paid with and continues there, or just signs in.
+- The thank-you link (`/welcome/<order id>`) is a secret: anyone holding it can see the plan and business name for that purchase. Anyone can also ask `/welcome` whether an email has paid (yes/no only). Add CAPTCHA on signup (Supabase -> Attack protection) as already advised.
+- A free-days coupon cannot be used before an account exists (use it in Billing after sign-in). Percent and rupee coupons work on the Buy page.

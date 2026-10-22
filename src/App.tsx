@@ -7,6 +7,8 @@ import { isBackendConfigured } from '@/lib/backend';
 import { Estimator } from '@/pages/Estimator';
 import { Landing } from '@/pages/Landing';
 import { Signup } from '@/pages/Signup';
+import { Buy } from '@/pages/Buy';
+import { Welcome } from '@/pages/Welcome';
 import { BillingPage } from '@/pages/admin/BillingPage';
 import { PlatformPage } from '@/pages/admin/PlatformPage';
 import { AccountPage } from '@/pages/admin/AccountPage';
@@ -86,6 +88,10 @@ export default function App() {
           <Switch>
             <Route path="/"><Home /></Route>
             <Route path="/signup"><Signup /></Route>
+            <Route path="/buy"><Buy /></Route>
+            <Route path="/buy/:period">{(p) => <Buy period={p.period} />}</Route>
+            <Route path="/welcome"><Welcome /></Route>
+            <Route path="/welcome/:pid">{(p) => <Welcome pid={p.pid} />}</Route>
             <Route path="/login"><Login /></Route>
             <Route path="/admin"><AdminLayout ownerOnly><Overview /></AdminLayout></Route>
             <Route path="/admin/quotes"><AdminLayout><Quotes /></AdminLayout></Route>

@@ -4,7 +4,7 @@ import { normalizeEventSlots, occupancyEntries } from './booking';
 import { computeTotals, lineTotal, quoteAdvance } from './pricing';
 import { newId } from './settings';
 import { localISODate } from './format';
-import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck } from './types';
+import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck, type PurchaseStatus, type NewPurchase } from './types';
 
 /**
  * Every screen talks to the database ONLY through this interface.
@@ -34,6 +34,11 @@ export interface Backend {
   /* ---- SaaS: signup, public page of a business, subscription, software-owner panel ---- */
   signUp(email: string, password: string): Promise<{ hasSession: boolean }>;
   createTenant(name: string, slug: string): Promise<string>;
+  /** Buy first (no account yet): starts the payment for this admin email and returns the payment page address. */
+  createPurchase(input: { email: string; period: BillingPeriod; coupon?: string; businessName?: string }): Promise<NewPurchase>;
+  /** Has the payment arrived? `id` is the secret from the thank-you link; `email` is the fallback when the link was lost. */
+  purchaseStatus(q: { id?: string; email?: string }): Promise<PurchaseStatus>;
+  savePurchaseProfile(id: string, businessName: string): Promise<void>;
   getSubscription(): Promise<Subscription | null>;
   startCheckout(period: BillingPeriod, coupon?: string): Promise<string>;
   cancelAutopay(): Promise<void>;
@@ -160,6 +165,14 @@ const readPending = (): { name: string; slug: string } | null => { try { const r
 export const savePendingTenant = (name: string, slug: string) => { try { window.localStorage.setItem(PENDING_KEY, JSON.stringify({ name, slug })); } catch { /* ignore */ } };
 const clearPending = () => { try { window.localStorage.removeItem(PENDING_KEY); } catch { /* ignore */ } };
 
+/** A person who paid on the website has no business yet: the database creates it (or reconnects the old one) and makes them its owner. */
+async function autoClaim(client: SupabaseClient, c: Ctx): Promise<{ ctx: Ctx; claimError: string }> {
+  if (c.role !== 'none' || c.problem) return { ctx: c, claimError: '' };
+  const r = await client.rpc('claim_purchase');
+  if (r.error) return { ctx: c, claimError: r.error.message };
+  return { ctx: await lookupContext(client), claimError: '' };
+}
+
 const STAFF_FN_MISSING = 'The employee service is not set up yet. Deploy the "manage-staff" function once (see SAAS-SETUP.md).';
 /** Calls the owner-only "manage-staff" Edge Function (it holds the secret key on the server, never in the browser). */
 async function callStaffFn(client: SupabaseClient, body: Record<string, unknown>): Promise<void> {
@@ -177,7 +190,10 @@ async function callStaffFn(client: SupabaseClient, body: Record<string, unknown>
 /** Last step of every sign-in: ask the database who this person is, and refuse people with no business / no role. */
 async function finishSignIn(client: SupabaseClient, email: string): Promise<NonNullable<Session>> {
   let c = await lookupContext(client);
-  // A new owner who had to confirm their email first: finish creating their business now.
+  // Paid on the website first? Create the admin's business now (or reconnect the old one when the same email renews).
+  const claimed = await autoClaim(client, c);
+  c = claimed.ctx;
+  // A new owner who started a free trial and had to confirm their email first: finish creating their business now.
   const pending = readPending();
   if (c.role === 'none' && pending && !c.problem) {
     const made = await client.rpc('create_tenant', { p_name: pending.name, p_slug: pending.slug });
@@ -185,7 +201,9 @@ async function finishSignIn(client: SupabaseClient, email: string): Promise<NonN
   }
   if (c.role !== 'admin' && c.role !== 'staff') {
     await client.auth.signOut();
-    throw new Error(c.problem ? `Signed in, but the database could not confirm your account: ${c.problem}. Run the latest SQL files.` : 'This account has no business yet, or it was switched off. Ask your owner, or sign up for a new business.');
+    if (c.problem) throw new Error(`Signed in, but the database could not confirm your account: ${c.problem}. Run the latest SQL files.`);
+    if (/confirm your email/i.test(claimed.claimError)) throw new Error(claimed.claimError);
+    throw new Error('This login has no business yet, or it was switched off. If you paid, sign in with the email you paid with. Employees: ask your owner. New here? Choose a plan first.');
   }
   return { email, role: c.role, tenantId: c.tenantId, tenantName: c.tenantName, slug: c.slug, platform: c.platform };
 }
@@ -272,6 +290,24 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       if (error) throw new Error(error.message);
       clearPending();
       return String(data);
+    },
+    async createPurchase({ email, period, coupon, businessName }) {
+      const { data, error } = await client.functions.invoke('create-purchase', { body: { email, period, coupon: coupon?.trim() || null, businessName: businessName?.trim() || null } });
+      if (error) throw await fnError(error);
+      const d = data as { purchaseId?: string; url?: string; amountPaise?: number; error?: string } | null;
+      if (d?.error) throw new Error(d.error);
+      if (!d?.purchaseId || !d.url) throw new Error('Could not start the payment.');
+      return { purchaseId: d.purchaseId, url: d.url, amount: (d.amountPaise ?? 0) / 100 };
+    },
+    async purchaseStatus({ id, email }) {
+      const { data, error } = await client.rpc('purchase_status', { p_id: id ?? null, p_email: email ?? null });
+      if (error) throw new Error(error.message);
+      const d = (data ?? { found: false }) as { found: boolean; status?: PurchaseStatus['status']; email?: string; period?: BillingPeriod; amountPaise?: number | null; periodEnd?: string | null; hasAccount?: boolean; hasWorkspace?: boolean; workspaceName?: string | null; businessName?: string | null };
+      return { found: d.found, status: d.status, email: d.email, period: d.period, amount: d.amountPaise ? d.amountPaise / 100 : undefined, periodEnd: d.periodEnd ?? null, hasAccount: d.hasAccount, hasWorkspace: d.hasWorkspace, workspaceName: d.workspaceName ?? null, businessName: d.businessName ?? null };
+    },
+    async savePurchaseProfile(id, businessName) {
+      const { error } = await client.rpc('save_purchase_profile', { p_id: id, p_business_name: businessName });
+      if (error) throw new Error(error.message);
     },
     async getSubscription() {
       const { data, error } = await client.rpc('get_subscription');
@@ -378,7 +414,7 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       if (error) throw error;
       const email = data.session?.user?.email;
       if (!email) return null;
-      const c = await lookupContext(client);
+      const c = (await autoClaim(client, await lookupContext(client))).ctx;
       return c.role === 'admin' || c.role === 'staff' ? { email, role: c.role, tenantId: c.tenantId, tenantName: c.tenantName, slug: c.slug, platform: c.platform } : null;
     },
     async signIn(email, password) {
@@ -522,6 +558,9 @@ function makeHttpBackend(apiUrl: string): Backend {
     canCreateStaff: true,
     async signUp() { throw new Error('Signup needs the Supabase version of Eventora.'); },
     async createTenant() { throw new Error('Multiple businesses need the Supabase version of Eventora.'); },
+    async createPurchase() { throw new Error('Buying a plan needs the Supabase version of Eventora.'); },
+    async purchaseStatus() { return { found: false }; },
+    async savePurchaseProfile() { /* not available on Hostinger */ },
     async getSubscription() { return null; },
     async startCheckout() { throw new Error('Subscriptions need the Supabase version of Eventora.'); },
     async cancelAutopay() { throw new Error('Not available on Hostinger.'); },

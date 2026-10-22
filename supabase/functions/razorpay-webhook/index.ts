@@ -26,20 +26,34 @@ Deno.serve(async (req) => {
   const event = JSON.parse(raw);
   const sub = event?.payload?.subscription?.entity;
   const tenantId: string | undefined = sub?.notes?.tenant_id;
-  if (!sub || !tenantId) return new Response('ignored', { status: 200 });
+  const buyerEmail: string | undefined = sub?.notes?.email;
+  if (!sub || (!tenantId && !buyerEmail)) return new Response('ignored', { status: 200 });
 
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const end = sub.current_end ? new Date(sub.current_end * 1000).toISOString() : null;
   const period = ['monthly', 'quarterly', 'yearly'].includes(sub?.notes?.period) ? sub.notes.period : undefined;
+
+  // BUY-FIRST subscriptions (started on the website before any account exists) carry the admin EMAIL, not a business id.
+  // The database remembers the payment against that email, and if a business with that admin email already exists
+  // (a renewal) it extends that same business, so all its data stays connected.
+  if (!tenantId && buyerEmail) {
+    const pay = event?.payload?.payment?.entity;
+    const r = await admin.rpc('purchase_event', {
+      p_sub: sub.id, p_email: buyerEmail, p_period: period ?? null, p_event: event.event, p_end: end,
+      p_payment: event.event === 'subscription.charged' ? (pay?.id ?? null) : null, p_amount: pay?.amount ?? null,
+    });
+    if (r.error) return new Response(r.error.message, { status: 500 });   // Razorpay retries on a non-200
+    return new Response('ok', { status: 200 });
+  }
   const base = { provider: 'razorpay', provider_subscription_id: sub.id, updated_at: new Date().toISOString(), ...(period ? { period } : {}) };
 
   switch (event.event) {
     case 'subscription.authenticated':        // customer approved autopay; the first charge happens on the start date
-      await admin.from('subscriptions').update({ ...base, autopay: true }).eq('tenant_id', tenantId);
+      await admin.from('subscriptions').update({ ...base, autopay: true }).eq('tenant_id', tenantId!);
       break;
     case 'subscription.activated':
     case 'subscription.charged': {
-      await admin.from('subscriptions').update({ ...base, status: 'active', autopay: true, current_period_end: end }).eq('tenant_id', tenantId);
+      await admin.from('subscriptions').update({ ...base, status: 'active', autopay: true, current_period_end: end }).eq('tenant_id', tenantId!);
       const pay = event?.payload?.payment?.entity;
       if (pay?.id && event.event === 'subscription.charged') {
         await admin.from('subscription_payments').upsert({ id: pay.id, tenant_id: tenantId, amount_paise: pay.amount, period: period ?? null, paid_at: new Date((pay.created_at ?? Math.floor(Date.now() / 1000)) * 1000).toISOString() });
@@ -48,13 +62,13 @@ Deno.serve(async (req) => {
     }
     case 'subscription.pending':
     case 'subscription.halted':               // a debit failed (and after retries, stopped)
-      await admin.from('subscriptions').update({ ...base, status: 'past_due' }).eq('tenant_id', tenantId);
+      await admin.from('subscriptions').update({ ...base, status: 'past_due' }).eq('tenant_id', tenantId!);
       break;
     case 'subscription.cancelled':
-      await admin.from('subscriptions').update({ ...base, status: 'cancelled', autopay: false, ...(end ? { current_period_end: end } : {}) }).eq('tenant_id', tenantId);
+      await admin.from('subscriptions').update({ ...base, status: 'cancelled', autopay: false, ...(end ? { current_period_end: end } : {}) }).eq('tenant_id', tenantId!);
       break;
     case 'subscription.completed':
-      await admin.from('subscriptions').update({ ...base, status: 'expired', autopay: false }).eq('tenant_id', tenantId);
+      await admin.from('subscriptions').update({ ...base, status: 'expired', autopay: false }).eq('tenant_id', tenantId!);
       break;
   }
   return new Response('ok', { status: 200 });

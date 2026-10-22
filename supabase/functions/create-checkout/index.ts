@@ -4,7 +4,11 @@
 // Secrets: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET
 // Prices come from the `plans` table (set in the "All businesses" panel); a Razorpay plan is created automatically per price.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { cors, json } from '../_shared.ts';
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
 const CYCLES: Record<string, number> = { monthly: 120, quarterly: 40, yearly: 10 };   // about 10 years of billing cycles
 const INTERVAL: Record<string, { period: 'monthly' | 'yearly'; interval: number }> = {

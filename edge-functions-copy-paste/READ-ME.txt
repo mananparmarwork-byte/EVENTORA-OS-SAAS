@@ -1,0 +1,4 @@
+Paste each file into Supabase -> Edge Functions -> "Create new edge function".
+Function name in the bottom box = the file name without .ts
+Select all in the code area (Cmd+A / Ctrl+A), paste, Deploy.
+Verify JWT OFF for: create-purchase, razorpay-webhook, send-reminders. ON for the rest.

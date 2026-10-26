@@ -5,19 +5,27 @@ export const cors = {
 };
 export const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-// Razorpay billing periods (used by create-purchase). A Razorpay plan is created once per exact price and remembered.
-export const INTERVAL: Record<string, { period: 'monthly' | 'yearly'; interval: number }> = {
-  monthly: { period: 'monthly', interval: 1 }, quarterly: { period: 'monthly', interval: 3 }, yearly: { period: 'yearly', interval: 1 },
-};
-export const CYCLES: Record<string, number> = { monthly: 120, quarterly: 40, yearly: 10 };
+// Razorpay billing interval for a plan that lasts `months` months (1, 3, 12, or anything the software owner creates).
+// Whole years use Razorpay's yearly period; everything else is counted in months.
+export const intervalFor = (months: number): { period: 'monthly' | 'yearly'; interval: number } =>
+  months % 12 === 0 ? { period: 'yearly', interval: months / 12 } : { period: 'monthly', interval: months };
+// About 10 years of billing cycles (120 for monthly, 40 for quarterly, 10 for yearly: same as before).
+export const cyclesFor = (months: number): number => Math.max(1, Math.ceil(120 / months));
 
 // deno-lint-ignore no-explicit-any
-export async function ensureRazorpayPlan(admin: any, auth: string, period: string, amount: number): Promise<{ id?: string; error?: string }> {
+export async function getPlan(admin: any, period: string): Promise<{ name: string; months: number } | null> {
+  const r = await admin.from('plans').select('name, months, active').eq('period', String(period)).maybeSingle();
+  if (r.error || !r.data || !r.data.active) return null;
+  return { name: String(r.data.name ?? period), months: Number(r.data.months ?? 1) };
+}
+
+// deno-lint-ignore no-explicit-any
+export async function ensureRazorpayPlan(admin: any, auth: string, period: string, amount: number, months: number, name: string): Promise<{ id?: string; error?: string }> {
   const found = await admin.from('razorpay_plan_variants').select('razorpay_plan_id').eq('period', period).eq('amount_paise', amount).maybeSingle();
   if (found.data?.razorpay_plan_id) return { id: found.data.razorpay_plan_id as string };
   const pr = await fetch('https://api.razorpay.com/v1/plans', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: auth },
-    body: JSON.stringify({ ...INTERVAL[period], item: { name: `Eventora Pro (${period})`, amount, currency: 'INR' } }),
+    body: JSON.stringify({ ...intervalFor(months), item: { name: `Eventora Pro (${name})`.slice(0, 100), amount, currency: 'INR' } }),
   });
   const plan = await pr.json();
   if (!pr.ok || !plan.id) return { error: plan?.error?.description ?? 'Could not create the plan at Razorpay.' };

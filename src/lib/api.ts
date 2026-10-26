@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getBackend } from './backend';
 import { cleanBusiness, cleanPayment } from './settings';
 import { cloneCatalog } from './catalog';
-import { PERIODS, PRICES } from './plans';
+import { FALLBACK_PLANS } from './plans';
 import { billDeleted, billUpdated, statusChanged } from './activity';
 import { DEFAULT_ACTIVITY_SETTINGS, DEFAULT_NUMBERING, DEFAULT_PERMISSIONS, type ActivityDraft, type ActivityEntry, type ActivitySettings, type BusinessProfile, type CatalogCategory, type NumberingSettings, type PaymentSettings, type Quote, type QuoteInput, type QuotePricing, type QuoteStatus, type Session, type StaffMember, type StaffPermissions, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type PurchaseStatus } from './types';
 
@@ -247,10 +247,10 @@ export function useSetTenantSubscription() {
 export function usePlans() {
   const q = useQuery<Plan[]>({
     queryKey: ['plans'],
-    queryFn: async () => (await be().getPlans()) ?? PERIODS.map((period) => ({ period, price: PRICES[period].price, active: true })),
+    queryFn: async () => (await be().getPlans()) ?? FALLBACK_PLANS,
     staleTime: 60_000,
   });
-  const all = q.data ?? PERIODS.map((period) => ({ period, price: PRICES[period].price, active: true }));
+  const all = [...(q.data ?? FALLBACK_PLANS)].sort((x, y) => x.sort - y.sort || x.months - y.months || x.price - y.price);
   return { ...q, all, plans: all.filter((p) => p.active) };
 }
 
@@ -267,6 +267,8 @@ export function usePlatformActions() {
   return {
     saveTrial: useMutation({ mutationFn: (d: number) => be().platformSaveTrialDays(d), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['trial-days'] }); } }),
     savePlan: useMutation({ mutationFn: (v: { period: BillingPeriod; price: number; active: boolean }) => be().platformSavePlan(v.period, v.price, v.active), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['plans'] }); } }),
+    upsertPlan: useMutation({ mutationFn: (p: Plan) => be().platformUpsertPlan(p), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['plans'] }); } }),
+    deletePlan: useMutation({ mutationFn: (period: BillingPeriod) => be().platformDeletePlan(period), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['plans'] }); } }),
     saveCoupon: useMutation({ mutationFn: (c: Coupon) => be().platformSaveCoupon(c), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['coupons'] }); } }),
   };
 }

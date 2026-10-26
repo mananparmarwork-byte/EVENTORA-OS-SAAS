@@ -4,8 +4,8 @@ import { ArrowLeft, ExternalLink, Lock, RefreshCw, Tag } from 'lucide-react';
 import { Brand } from '@/components/Logo';
 import { Button, Field, Input } from '@/components/ui';
 import { PricingCards } from '@/pages/Landing';
-import { createPurchase, purchaseStatus } from '@/lib/api';
-import { PRICES } from '@/lib/plans';
+import { createPurchase, purchaseStatus, usePlans } from '@/lib/api';
+import { planName } from '@/lib/plans';
 import { inr } from '@/lib/format';
 import type { BillingPeriod } from '@/lib/types';
 
@@ -13,13 +13,13 @@ const STORE = 'eventora-order';
 type Order = { id: string; url: string; email: string; amount: number; period: BillingPeriod };
 const readOrder = (): Order | null => { try { const r = window.localStorage.getItem(STORE); return r ? (JSON.parse(r) as Order) : null; } catch { return null; } };
 const writeOrder = (o: Order | null) => { try { if (o) window.localStorage.setItem(STORE, JSON.stringify(o)); else window.localStorage.removeItem(STORE); } catch { /* ignore */ } };
-const isPeriod = (v?: string): v is BillingPeriod => v === 'monthly' || v === 'quarterly' || v === 'yearly';
 
 /** Step 1 of buying: choose a plan and the ADMIN email, then pay. No account is needed yet:
  *  the admin login and the business are created automatically at the first sign-in after payment. */
 export function Buy({ period: initial }: { period?: string }) {
   const [, navigate] = useLocation();
-  const [period, setPeriod] = useState<BillingPeriod>(isPeriod(initial) ? initial : 'quarterly');
+  const { all: allPlans } = usePlans();
+  const [period, setPeriod] = useState<BillingPeriod>(initial ?? '');
   const [email, setEmail] = useState('');
   const [coupon, setCoupon] = useState('');
   const [showCoupon, setShowCoupon] = useState(false);
@@ -51,6 +51,7 @@ export function Buy({ period: initial }: { period?: string }) {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!period) { setError('Choose a plan first.'); return; }
     setBusy(true);
     try {
       const r = await createPurchase({ email: email.trim(), period, coupon: coupon.trim() || undefined });
@@ -81,7 +82,7 @@ export function Buy({ period: initial }: { period?: string }) {
           <div className="fade-up mx-auto max-w-md rounded-3xl border border-border bg-surface p-8 text-center card-glow">
             <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-gold/12 text-gold"><Lock size={22} /></span>
             <h1 className="mt-4 font-display text-2xl font-semibold text-text">Complete your payment</h1>
-            <p className="mt-2 text-sm text-text-secondary">Eventora Pro · {PRICES[order.period].label} · <strong className="text-text">{inr(order.amount)}</strong><br />Admin email: <strong className="text-text">{order.email}</strong></p>
+            <p className="mt-2 text-sm text-text-secondary">Eventora Pro · {planName(allPlans, order.period)} · <strong className="text-text">{inr(order.amount)}</strong><br />Admin email: <strong className="text-text">{order.email}</strong></p>
             <a href={order.url} target="_blank" rel="noopener noreferrer" className="mt-6 block">
               <Button variant="gold" size="lg" className="w-full">Pay {inr(order.amount)} securely <ExternalLink size={16} /></Button>
             </a>

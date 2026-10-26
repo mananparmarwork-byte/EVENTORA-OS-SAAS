@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
 
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const end = sub.current_end ? new Date(sub.current_end * 1000).toISOString() : null;
-  const period = ['monthly', 'quarterly', 'yearly'].includes(sub?.notes?.period) ? sub.notes.period : undefined;
+  const period = typeof sub?.notes?.period === 'string' && /^[a-z0-9][a-z0-9-]{1,29}$/.test(sub.notes.period) ? sub.notes.period : undefined;   // any plan code the software owner created
 
   // BUY-FIRST subscriptions (started on the website before any account exists) carry the admin EMAIL, not a business id.
   // The database remembers the payment against that email, and if a business with that admin email already exists

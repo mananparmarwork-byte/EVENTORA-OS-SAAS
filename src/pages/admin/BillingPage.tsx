@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, BadgeCheck, CheckCircle2, Clock, CreditCard, Loader2, RefreshCw, Ticket } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, Field, Input, Spinner, useUi } from '@/components/ui';
 import { PricingCards } from '@/pages/Landing';
-import { checkCoupon, startCheckout, useSubscription, useSubscriptionAdmin } from '@/lib/api';
+import { checkCoupon, startCheckout, usePlans, useSubscription, useSubscriptionAdmin } from '@/lib/api';
 import { fmtDate, inr } from '@/lib/format';
-import { PRICES } from '@/lib/plans';
+import { planName } from '@/lib/plans';
 import type { BillingPeriod, CouponCheck, Subscription } from '@/lib/types';
 
 const daysLeft = (iso: string | null) => (iso ? Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 864e5)) : 0);
 
-export function statusLine(s: Subscription): { tone: 'success' | 'warning' | 'error' | 'info'; title: string; text: string } {
+export function statusLine(s: Subscription, label: string): { tone: 'success' | 'warning' | 'error' | 'info'; title: string; text: string } {
   const trialOver = s.status === 'trialing' && !s.writable;
   if (s.status === 'trialing') {
     if (trialOver) return { tone: 'error', title: 'Your free trial has ended', text: 'The software is locked. Your data is safe. Choose a plan to unlock it.' };
@@ -21,10 +21,10 @@ export function statusLine(s: Subscription): { tone: 'success' | 'warning' | 'er
   if (s.status === 'active') {
     if (!s.writable) return { tone: 'error', title: 'Your plan has ended', text: 'The software is locked. Renew to unlock it. Your data is safe.' };
     const d = daysLeft(s.currentPeriodEnd);
-    if (s.autopay) return { tone: 'success', title: `${PRICES[s.period].label} plan is active`, text: s.currentPeriodEnd ? `Autopay is on. Next payment around ${fmtDate(s.currentPeriodEnd)}.` : 'Autopay is on.' };
+    if (s.autopay) return { tone: 'success', title: `${label} plan is active`, text: s.currentPeriodEnd ? `Autopay is on. Next payment around ${fmtDate(s.currentPeriodEnd)}.` : 'Autopay is on.' };
     return d <= 7
       ? { tone: 'warning', title: `Your plan ends in ${d} day${d === 1 ? '' : 's'}`, text: `Paid until ${fmtDate(s.currentPeriodEnd ?? '')}. Renew with autopay so it never lapses.` }
-      : { tone: 'success', title: `${PRICES[s.period].label} plan is active`, text: s.currentPeriodEnd ? `Paid until ${fmtDate(s.currentPeriodEnd)}.` : 'Your plan is active.' };
+      : { tone: 'success', title: `${label} plan is active`, text: s.currentPeriodEnd ? `Paid until ${fmtDate(s.currentPeriodEnd)}.` : 'Your plan is active.' };
   }
   if (s.status === 'past_due') return { tone: 'warning', title: 'A payment did not go through', text: 'Please pay now. Access will stop in a few days if it stays unpaid.' };
   if (s.status === 'cancelled') return s.writable
@@ -37,7 +37,8 @@ export function BillingPage() {
   const { toast, confirm } = useUi();
   const { sub, isLoading } = useSubscription();
   const admin = useSubscriptionAdmin();
-  const [period, setPeriod] = useState<BillingPeriod>('quarterly');
+  const { all: allPlans } = usePlans();
+  const [period, setPeriod] = useState<BillingPeriod>('');
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState('');
   const [applied, setApplied] = useState<CouponCheck | null>(null);
@@ -66,6 +67,7 @@ export function BillingPage() {
   const redeem = () => admin.redeem.mutate(applied?.code ?? '', { onSuccess: (d) => { toast(`${d} free days added.`); setApplied(null); setCode(''); }, onError: (e) => toast(e.message, 'error') });
 
   const pay = async () => {
+    if (!period) { toast('Choose a plan first.', 'error'); return; }
     setBusy(true);
     try { window.location.assign(await startCheckout(period, applied && applied.kind !== 'free_days' ? applied.code : undefined)); }
     catch (e) { toast(e instanceof Error ? e.message : 'Could not start the payment.', 'error'); setBusy(false); }
@@ -77,7 +79,7 @@ export function BillingPage() {
   };
 
   if (isLoading) return <Spinner label="Loading billing" />;
-  const line = sub ? statusLine(sub) : null;
+  const line = sub ? statusLine(sub, planName(allPlans, sub.period)) : null;
   const Icon = line?.tone === 'success' ? CheckCircle2 : line?.tone === 'info' ? Clock : AlertTriangle;
   const cls = { success: 'border-success/30 bg-success-bg text-success', warning: 'border-warning/30 bg-warning-bg text-warning', error: 'border-error/30 bg-error-bg text-error', info: 'border-info/30 bg-info/10 text-info' };
   const discount = applied && applied.kind !== 'free_days' ? applied.finalPrice ?? null : null;

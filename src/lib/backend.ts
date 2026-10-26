@@ -48,6 +48,8 @@ export interface Backend {
   platformGetTrialDays(): Promise<number>;
   platformSaveTrialDays(days: number): Promise<void>;
   platformSavePlan(period: BillingPeriod, priceRupees: number, active: boolean): Promise<void>;
+  platformUpsertPlan(plan: Plan): Promise<void>;
+  platformDeletePlan(period: BillingPeriod): Promise<void>;
   platformListCoupons(): Promise<Coupon[]>;
   platformSaveCoupon(c: Coupon): Promise<void>;
   listTenants(): Promise<TenantRow[]>;
@@ -319,7 +321,13 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
     },
     async getPlans() {
       const { data, error } = await client.rpc('get_plans');
-      return error || !Array.isArray(data) || data.length === 0 ? null : (data as Plan[]);
+      if (error || !Array.isArray(data) || data.length === 0) return null;
+      // older databases (before 14-custom-plans.sql) only send period / price / active: fill in the rest
+      const base: Record<string, { name: string; months: number; sort: number }> = { monthly: { name: 'Monthly', months: 1, sort: 1 }, quarterly: { name: 'Quarterly', months: 3, sort: 2 }, yearly: { name: 'Yearly', months: 12, sort: 3 } };
+      return (data as Partial<Plan>[]).map((r) => {
+        const d = base[String(r.period)] ?? { name: String(r.period), months: 1, sort: 100 };
+        return { period: String(r.period), name: r.name ?? d.name, months: Number(r.months ?? d.months), price: Number(r.price), active: r.active !== false, popular: Boolean(r.popular ?? r.period === 'quarterly'), description: r.description ?? '', features: Array.isArray(r.features) ? r.features : [], sort: Number(r.sort ?? d.sort) };
+      });
     },
     async checkCoupon(code, period) {
       const { data, error } = await client.rpc('check_coupon', { p_code: code, p_period: period });
@@ -343,6 +351,14 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
     },
     async platformSavePlan(period, priceRupees, active) {
       const { error } = await client.rpc('platform_save_plan', { p_period: period, p_price_paise: Math.round(priceRupees * 100), p_active: active });
+      if (error) throw new Error(error.message);
+    },
+    async platformUpsertPlan(p) {
+      const { error } = await client.rpc('platform_upsert_plan', { p_key: p.period, p_name: p.name, p_months: p.months, p_price_paise: Math.round(p.price * 100), p_description: p.description, p_features: p.features, p_popular: p.popular, p_active: p.active, p_sort: p.sort });
+      if (error) throw new Error(/platform_upsert_plan/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/14-custom-plans.sql in the Supabase SQL Editor first, then try again.' : error.message);
+    },
+    async platformDeletePlan(period) {
+      const { error } = await client.rpc('platform_delete_plan', { p_key: period });
       if (error) throw new Error(error.message);
     },
     async platformListCoupons() {
@@ -570,6 +586,8 @@ function makeHttpBackend(apiUrl: string): Backend {
     async platformGetTrialDays() { return 14; },
     async platformSaveTrialDays() { throw new Error('Not available on Hostinger.'); },
     async platformSavePlan() { throw new Error('Not available on Hostinger.'); },
+    async platformUpsertPlan() { throw new Error('Not available on Hostinger.'); },
+    async platformDeletePlan() { throw new Error('Not available on Hostinger.'); },
     async platformListCoupons() { return []; },
     async platformSaveCoupon() { throw new Error('Not available on Hostinger.'); },
     async listTenants() { return []; },

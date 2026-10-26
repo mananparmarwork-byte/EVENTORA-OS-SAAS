@@ -4,7 +4,7 @@
 // Deploy:  supabase functions deploy create-purchase --no-verify-jwt
 // Secrets: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET   (same ones as create-checkout)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { CYCLES, INTERVAL, cors, ensureRazorpayPlan, json } from '../_shared.ts';
+import { cors, cyclesFor, ensureRazorpayPlan, getPlan, json } from '../_shared.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -12,12 +12,14 @@ Deno.serve(async (req) => {
     const { email, period, coupon, businessName } = await req.json();
     const em = String(email ?? '').trim().toLowerCase();
     if (em.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) return json({ error: 'Enter a valid email address.' }, 400);
-    if (!INTERVAL[period]) return json({ error: 'Choose monthly, quarterly or yearly.' }, 400);
 
     const keyId = Deno.env.get('RAZORPAY_KEY_ID'), secret = Deno.env.get('RAZORPAY_KEY_SECRET');
     if (!keyId || !secret) return json({ error: 'Online payments are not set up yet. Please contact support.' }, 503);
     const auth = `Basic ${btoa(`${keyId}:${secret}`)}`;
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+    const chosen = await getPlan(admin, period);
+    if (!chosen) return json({ error: 'That plan is not available. Please choose another one.' }, 400);
 
     const pre = await admin.rpc('purchase_precheck', { p_email: em });
     if (pre.error) return json({ error: pre.error.message }, 500);
@@ -27,13 +29,13 @@ Deno.serve(async (req) => {
     if (price.error || !price.data) return json({ error: price.error?.message ?? 'Could not work out the price.' }, 400);
     const amount: number = price.data.amountPaise;
 
-    const plan = await ensureRazorpayPlan(admin, auth, period, amount);
+    const plan = await ensureRazorpayPlan(admin, auth, period, amount, chosen.months, chosen.name);
     if (!plan.id) return json({ error: plan.error }, 502);
 
     const res = await fetch('https://api.razorpay.com/v1/subscriptions', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: auth },
       body: JSON.stringify({
-        plan_id: plan.id, total_count: CYCLES[period], customer_notify: 1,
+        plan_id: plan.id, total_count: cyclesFor(chosen.months), customer_notify: 1,
         notify_info: { notify_email: em },
         notes: { email: em, period, coupon: price.data.code ?? '', source: 'buy-first' },
       }),

@@ -4,7 +4,8 @@ import { AlertTriangle, BarChart3, Building2, CalendarDays, CreditCard, Chevrons
 import { Brand } from '@/components/Logo';
 import { Button, Spinner, useUi } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { signOut, useSession, useSubscription } from '@/lib/api';
+import { signOut, usePlans, useSession, useSubscription } from '@/lib/api';
+import { planName } from '@/lib/plans';
 import { statusLine } from '@/pages/admin/BillingPage';
 import { cn, initials } from '@/lib/format';
 
@@ -19,13 +20,13 @@ const NAV = [
   { href: '/admin/reports', label: 'Reports', icon: BarChart3, owner: true },
   { href: '/admin/billing', label: 'Billing', icon: CreditCard, owner: true },
   { href: '/admin/settings', label: 'Settings', icon: Settings, owner: true },
-  { href: '/admin/platform', label: 'All businesses', icon: Building2, platform: true },
+  { href: '/admin/platform', label: 'Super admin', icon: Building2, platform: true },
   { href: '/admin/account', label: 'My account', icon: ShieldCheck },
 ] as { href: string; label: string; staffLabel?: string; icon: typeof Layers; exact?: boolean; owner?: boolean; staffOnly?: boolean; platform?: boolean }[];
 
 const TITLES: [string, string][] = [
   ['/admin/new', 'New quotation'], ['/admin/edit', 'Edit quotation'], ['/admin/quotes', 'Quotations'], ['/admin/calendar', 'Calendar'], ['/admin/activity', 'Activity'],
-  ['/admin/catalog', 'Catalog'], ['/admin/billing', 'Billing'], ['/admin/account', 'My account'], ['/admin/platform', 'All businesses'], ['/admin/reports', 'Reports'], ['/admin/settings', 'Settings'], ['/admin', 'Overview'],
+  ['/admin/catalog', 'Catalog'], ['/admin/billing', 'Billing'], ['/admin/account', 'My account'], ['/admin/platform', 'Super admin: businesses, plans, coupons'], ['/admin/reports', 'Reports'], ['/admin/settings', 'Settings'], ['/admin', 'Overview'],
 ];
 
 const IDLE_MINUTES = 30;
@@ -45,8 +46,9 @@ function readCollapsed() { try { return window.localStorage.getItem('eventora-si
 
 function SubscriptionBanner({ isAdmin }: { isAdmin: boolean }) {
   const { sub } = useSubscription();
+  const { all: allPlans } = usePlans();
   if (!sub) return null;
-  const line = statusLine(sub);
+  const line = statusLine(sub, planName(allPlans, sub.period));
   if (line.tone === 'success' || (line.tone === 'info' && sub.status === 'trialing' && sub.trialEndsAt && new Date(sub.trialEndsAt).getTime() - Date.now() > 7 * 864e5)) return null;
   const cls = { success: '', info: 'border-info/30 bg-info/10 text-info', warning: 'border-warning/30 bg-warning-bg text-warning', error: 'border-error/30 bg-error-bg text-error' }[line.tone];
   return (
@@ -67,6 +69,28 @@ function LockScreen({ onSignOut }: { onSignOut: () => void }) {
         <h1 className="mt-5 font-display text-2xl font-semibold text-text">Subscription ended</h1>
         <p className="mt-2 text-sm text-text-secondary">Your business&apos;s plan has ended, so Eventora is switched off for now. Please ask the owner to renew it. Nothing has been lost.</p>
         <button type="button" onClick={onSignOut} className="mt-6 w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-text hover:bg-surface-hover">Sign out</button>
+      </div>
+    </main>
+  );
+}
+
+/** Shown instead of a silent redirect when someone opens the super admin page without being the software owner. */
+function PlatformDenied({ email, onSignOut }: { email: string; onSignOut: () => void }) {
+  const sql = `insert into public.platform_admins (user_id)\nselect id from auth.users where lower(email) = lower('${email.replace(/'/g, "''")}')\non conflict do nothing;`;
+  return (
+    <main className="grid min-h-dvh place-items-center bg-page p-6">
+      <div className="w-full max-w-xl rounded-2xl border border-border bg-surface p-8">
+        <h1 className="font-display text-2xl font-semibold text-text">This login is not the super admin</h1>
+        <p className="mt-2 text-sm text-text-secondary">You are signed in as <strong className="text-text">{email}</strong>, and the database does not list that login as the software owner, so the Super admin page stays closed.</p>
+        <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-text-secondary">
+          <li>Open Supabase, then <strong>SQL Editor</strong>, and run this once:
+            <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-input p-3 text-xs text-gold">{sql}</pre>
+          </li>
+          <li>Come back here, <strong>sign out</strong> and sign in again (the app only checks this when you sign in).</li>
+          <li>If you use two-step verification, enter the 6-digit code at sign-in; without it the page stays closed.</li>
+        </ol>
+        <p className="mt-4 text-xs text-text-disabled">Signed in with a different email than the one you own the software with? Sign out and use that one instead.</p>
+        <div className="mt-6 flex flex-wrap gap-2"><Button variant="gold" onClick={onSignOut}>Sign out</Button><a href="#/admin"><Button variant="ghost">Back to my dashboard</Button></a></div>
       </div>
     </main>
   );
@@ -93,7 +117,8 @@ export function AdminLayout({ children, ownerOnly = false, platformOnly = false 
   const canUsePlatform = Boolean(session.platform) && location === '/admin/platform';
   if (locked && !isAdmin) return <LockScreen onSignOut={async () => { await signOut(); qc.clear(); navigate('/login'); }} />;
   if (locked && isAdmin && location !== '/admin/billing' && location !== '/admin/account' && !canUsePlatform) return <Redirect to="/admin/billing" />;
-  if ((ownerOnly && !isAdmin) || (platformOnly && !session.platform)) return <Redirect to={isAdmin ? '/admin' : '/admin/new'} />;
+  if (platformOnly && !session.platform) return <PlatformDenied email={session.email} onSignOut={async () => { await signOut(); qc.clear(); navigate('/login'); }} />;
+  if (ownerOnly && !isAdmin) return <Redirect to={isAdmin ? '/admin' : '/admin/new'} />;
   const items = NAV.filter((i) => (i.platform ? Boolean(session.platform) : isAdmin ? !i.staffOnly : !i.owner)).filter((i) => !locked || i.href === '/admin/billing' || i.href === '/admin/account' || i.platform);
 
   const title = TITLES.find(([p]) => location.startsWith(p))?.[1] ?? 'Eventora OS';

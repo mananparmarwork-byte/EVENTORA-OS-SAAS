@@ -1,4 +1,4 @@
-import type { BillingPeriod } from './types';
+import type { BillingPeriod, Plan } from './types';
 
 /**
  * (These are only the FALLBACK prices shown if the database cannot be reached. The real prices and the free-trial length are set
@@ -12,9 +12,19 @@ export const PRICES: Record<BillingPeriod, { label: string; months: number; pric
 };
 export const PERIODS: BillingPeriod[] = ['monthly', 'quarterly', 'yearly'];
 
-export const perMonth = (p: BillingPeriod) => Math.round(PRICES[p].price / PRICES[p].months);
-/** Percentage saved against paying month by month. */
-export const savePercent = (p: BillingPeriod) => Math.max(0, Math.round((1 - PRICES[p].price / (PRICES.monthly.price * PRICES[p].months)) * 100));
+/** Shown only if the database cannot be reached. The real plans are created in Super admin -> Plans & prices. */
+export const FALLBACK_PLANS: Plan[] = PERIODS.map((period, i) => ({
+  period, name: PRICES[period].label, months: PRICES[period].months, price: PRICES[period].price, active: true,
+  popular: period === 'quarterly', description: '', features: [], sort: i + 1,
+}));
+
+/** "per month", "per 3 months", "per year" ... */
+export const perLabel = (months: number) => (months === 1 ? 'per month' : months === 12 ? 'per year' : months % 12 === 0 ? `per ${months / 12} years` : `per ${months} months`);
+/** The name to show for a plan code (falls back to the code itself for plans that were deleted). */
+export const planName = (plans: Plan[], key?: string | null) => (key ? plans.find((p) => p.period === key)?.name ?? PRICES[key]?.label ?? key : '');
+/** Lower-case letters, numbers and dashes: used to turn a plan name into its code. */
+export const slugPlan = (v: string) => v.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+
 
 export const FEATURES = [
   'Quotations, tax invoices and PDF bills with your logo',

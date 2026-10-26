@@ -19,6 +19,14 @@
 `01` -> `02` -> `03` (already done) -> `05-saas-tables` -> `06-saas-functions-security` -> `07-saas-check` -> `08-saas-billing` -> `10-billing-check` -> **`11-saas-security-team`** -> `12-security-check` -> **`13-purchase-onboarding`** -> `13-check`.
 - File 13 (buy first, automatic admin, renewal reconnect) is new. **Run it last**; if you ever re-run 06, 08 or 11, run 13 again.
 - Every check file must show only OK.
+
+## 1b. Create your own plans (new)
+1. Supabase -> SQL Editor: run **`supabase/14-custom-plans.sql`** once (after 13). The last query must show only OK.
+2. Re-deploy the functions that read plans: `supabase functions deploy create-checkout`, `supabase functions deploy create-purchase --no-verify-jwt`, `supabase functions deploy razorpay-webhook --no-verify-jwt`.
+3. Push the new app code (GitHub deploy runs by itself).
+4. Sign in as the software owner -> sidebar **Super admin** -> **Plans & prices** -> **New plan**. Name, price, duration in months, feature lines, "Most popular", on/off. It shows on the website and Billing page straight away.
+- A plan that was already bought can be switched off but not deleted, and its duration cannot change (create a new plan instead).
+- **Cannot open Super admin?** Your login must be in `platform_admins`. Edit the email in `supabase/make-platform-admin.sql`, run it, then sign out and sign in again. The page itself now tells you this if the login is not the software owner.
 - **Always run `11` last.** If you ever re-run `06` or `08`, run `11` again afterwards.
 - Take a backup first (Database -> Backups): files 05 and 11 change keys and rules.
 - Optional, for reminder emails: `09-reminder-cron.sql`.

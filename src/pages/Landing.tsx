@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
 import { Check, CalendarCheck, FileText, History, IndianRupee, Users, Wallet } from 'lucide-react';
 import { Brand } from '@/components/Logo';
 import { Button, Card } from '@/components/ui';
 import { usePlans } from '@/lib/api';
-import { FEATURES, PERIODS, PLAN_NAME, PRICES } from '@/lib/plans';
+import { FEATURES, PLAN_NAME, perLabel } from '@/lib/plans';
 import { cn, inr } from '@/lib/format';
-import type { BillingPeriod } from '@/lib/types';
+import type { BillingPeriod, Plan } from '@/lib/types';
 
 const HIGHLIGHTS = [
   { icon: FileText, title: 'Quotes & invoices in minutes', text: 'Pick services, see the price live, send a branded PDF or WhatsApp message.' },
@@ -17,35 +17,46 @@ const HIGHLIGHTS = [
   { icon: IndianRupee, title: 'Know your numbers', text: 'Revenue and bookings by day, week, month or any dates you choose.' },
 ];
 
-/** The three billing periods. Prices come from the database (you edit them in "All businesses" -> Plans). */
+/** The plans buyers can choose. They come from the database: the software owner creates them in Super admin -> Plans & prices. */
 export function PricingCards({ cta, period: controlled, onPeriod, finalPrice }: { cta: (p: BillingPeriod) => React.ReactNode; period?: BillingPeriod; onPeriod?: (p: BillingPeriod) => void; finalPrice?: number | null }) {
   const { plans } = usePlans();
-  const [inner, setInner] = useState<BillingPeriod>('quarterly');
-  const period = controlled ?? inner;
+  const [inner, setInner] = useState<BillingPeriod>('');
+  const fallback = (plans.find((x) => x.popular) ?? plans[0])?.period ?? '';
+  const wanted = controlled ?? inner;
+  const period = plans.some((x) => x.period === wanted) ? wanted : fallback;
+  // keep the page that owns the selection (Buy / Billing) in step with what is really shown
+  useEffect(() => { if (period && period !== controlled) onPeriod?.(period); }, [period, controlled, onPeriod]);
   const choose = (p: BillingPeriod) => { setInner(p); onPeriod?.(p); };
-  const price = (p: BillingPeriod) => plans.find((x) => x.period === p)?.price ?? PRICES[p].price;
-  const months = (p: BillingPeriod) => PRICES[p].months;
-  const save = (p: BillingPeriod) => Math.max(0, Math.round((1 - price(p) / (price('monthly') * months(p))) * 100));
-  const list = PERIODS.filter((p) => plans.some((x) => x.period === p));
-  const shown = finalPrice ?? price(period);
+  const plan = plans.find((x) => x.period === period);
+  if (!plan) return <p className="text-center text-sm text-text-secondary">No plans are on sale right now. Please check back soon.</p>;
+
+  // "save X%" compares each plan with the cheapest price per month among the plans
+  const perMonth = (p: Plan) => p.price / p.months;
+  const best = Math.max(...plans.map(perMonth));
+  const save = (p: Plan) => (best > 0 ? Math.max(0, Math.round((1 - perMonth(p) / best) * 100)) : 0);
+  const features = plan.features.length ? plan.features : FEATURES;
+  const shown = finalPrice ?? plan.price;
   return (
     <div>
-      <div className="mx-auto flex w-fit rounded-2xl border border-border bg-surface p-1" role="tablist" aria-label="Billing period">
-        {list.map((p) => (
-          <button key={p} type="button" role="tab" aria-selected={period === p} onClick={() => choose(p)}
-            className={cn('rounded-xl px-4 py-2 text-sm font-medium transition-colors', period === p ? 'bg-gold text-text-on-gold' : 'text-text-secondary hover:text-text')}>
-            {PRICES[p].label}{save(p) > 0 && <span className={cn('ml-2 text-[11px] font-semibold', period === p ? 'text-text-on-gold/70' : 'text-success')}>save {save(p)}%</span>}
-          </button>
-        ))}
-      </div>
+      {plans.length > 1 && (
+        <div className="mx-auto flex w-fit max-w-full flex-wrap justify-center rounded-2xl border border-border bg-surface p-1" role="tablist" aria-label="Plans">
+          {plans.map((p) => (
+            <button key={p.period} type="button" role="tab" aria-selected={period === p.period} onClick={() => choose(p.period)}
+              className={cn('rounded-xl px-4 py-2 text-sm font-medium transition-colors', period === p.period ? 'bg-gold text-text-on-gold' : 'text-text-secondary hover:text-text')}>
+              {p.name}{save(p) > 0 && <span className={cn('ml-2 text-[11px] font-semibold', period === p.period ? 'text-text-on-gold/70' : 'text-success')}>save {save(p)}%</span>}
+            </button>
+          ))}
+        </div>
+      )}
       <Card className="mx-auto mt-8 max-w-md border-gold/30 p-8 text-center">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold">{PLAN_NAME}</p>
-        {finalPrice != null && finalPrice < price(period) && <p className="mt-3 text-lg text-text-disabled line-through tabular">{inr(price(period))}</p>}
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold">{PLAN_NAME} · {plan.name}{plan.popular && plans.length > 1 ? ' · most popular' : ''}</p>
+        {plan.description && <p className="mt-2 text-sm text-text-secondary">{plan.description}</p>}
+        {finalPrice != null && finalPrice < plan.price && <p className="mt-3 text-lg text-text-disabled line-through tabular">{inr(plan.price)}</p>}
         <p className={cn('font-display text-5xl font-semibold text-text tabular', finalPrice == null && 'mt-3')}>{inr(shown)}</p>
-        <p className="mt-1 text-sm text-text-secondary">per {period === 'monthly' ? 'month' : period === 'quarterly' ? '3 months' : 'year'} · about {inr(Math.round(shown / months(period)))} a month</p>
+        <p className="mt-1 text-sm text-text-secondary">{perLabel(plan.months)}{plan.months > 1 ? ` · about ${inr(Math.round(shown / plan.months))} a month` : ''}</p>
         <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-success-bg px-3 py-1 text-[11px] font-medium text-success"><Check size={12} /> Autopay: you are charged automatically, nothing to remember</p>
         <ul className="mt-6 space-y-2.5 text-left text-sm">
-          {FEATURES.map((f) => <li key={f} className="flex items-start gap-2.5 text-text-secondary"><Check size={16} className="mt-0.5 shrink-0 text-gold" />{f}</li>)}
+          {features.map((f) => <li key={f} className="flex items-start gap-2.5 text-text-secondary"><Check size={16} className="mt-0.5 shrink-0 text-gold" />{f}</li>)}
         </ul>
         <div className="mt-8">{cta(period)}</div>
       </Card>

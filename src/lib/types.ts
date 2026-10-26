@@ -136,12 +136,13 @@ export type ActivityDraft = Omit<ActivityEntry, 'id' | 'at' | 'actorEmail' | 'ac
 export type StaffMember = { id: string; email: string; active: boolean };
 
 /* ------------------------------------------------------------------ SaaS --- */
-export type BillingPeriod = 'monthly' | 'quarterly' | 'yearly';
+/** The plan code (e.g. 'monthly', 'quarterly', 'yearly' or anything the software owner creates, like 'diwali-offer'). */
+export type BillingPeriod = string;
 export type SubStatus = 'trialing' | 'active' | 'past_due' | 'cancelled' | 'expired';
 export type Subscription = { status: SubStatus; plan: string; period: BillingPeriod; trialEndsAt: string | null; currentPeriodEnd: string | null; writable: boolean; autopay?: boolean; couponCode?: string | null };
 export type TenantRow = { id: string; name: string; slug: string; createdAt: string; ownerEmail: string | null; status: SubStatus | null; period: BillingPeriod | null; trialEndsAt: string | null; currentPeriodEnd: string | null; members: number; bills: number; autopay?: boolean; couponCode?: string | null; paid?: number };
 
-export type Plan = { period: BillingPeriod; price: number; active: boolean };
+export type Plan = { period: BillingPeriod; name: string; months: number; price: number; active: boolean; popular: boolean; description: string; features: string[]; sort: number };
 export type CouponKind = 'percent' | 'amount' | 'free_days';
 /** `value`: percent (1-100), rupees off, or days. */
 export type Coupon = { code: string; kind: CouponKind; value: number; periods: BillingPeriod[] | null; maxUses: number | null; usedCount: number; validUntil: string | null; active: boolean; note: string };

@@ -4,9 +4,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Building2, CalendarClock, Check, FileText, History, MailCheck, PartyPopper, Search, ShieldCheck, UtensilsCrossed, Users } from 'lucide-react';
 import { Brand } from '@/components/Logo';
 import { Button, Card, Field, Input, Spinner } from '@/components/ui';
-import { keys, savePurchaseProfile, signIn, signUp, usePurchaseStatus, useQuotes, useSubscription } from '@/lib/api';
+import { keys, savePurchaseProfile, signIn, signUp, usePlans, usePurchaseStatus, useQuotes, useSubscription } from '@/lib/api';
 import { MfaRequiredError } from '@/lib/backend';
-import { PLAN_NAME, PRICES } from '@/lib/plans';
+import { PLAN_NAME, planName } from '@/lib/plans';
 import { cn, fmtDate, inr } from '@/lib/format';
 import { passwordProblem } from '@/pages/admin/AccountPage';
 import type { PurchaseStatus } from '@/lib/types';
@@ -124,7 +124,8 @@ function Onboard({ p, pid, lookupEmail, onDone }: { p: PurchaseStatus; pid?: str
     } finally { setBusy(false); }
   };
 
-  const plan = p.period ? PRICES[p.period] : null;
+  const { all: allPlans } = usePlans();
+  const plan = p.period ? { label: planName(allPlans, p.period) } : null;
   const steps = [
     { title: 'Payment received', text: plan ? `${PLAN_NAME} · ${plan.label}${p.amount ? ` · ${inr(p.amount)}` : ''}` : PLAN_NAME, state: 'done' as const },
     { title: existing ? 'Sign in as admin' : 'Create your admin login', text: existing ? 'Use your existing password.' : 'Choose a password. It is only for you.', state: 'now' as const },

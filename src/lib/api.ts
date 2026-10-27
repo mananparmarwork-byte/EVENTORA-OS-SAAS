@@ -5,7 +5,7 @@ import { cleanBusiness, cleanPayment } from './settings';
 import { cloneCatalog } from './catalog';
 import { FALLBACK_PLANS } from './plans';
 import { billDeleted, billUpdated, statusChanged } from './activity';
-import { DEFAULT_ACTIVITY_SETTINGS, DEFAULT_NUMBERING, DEFAULT_PERMISSIONS, type ActivityDraft, type ActivityEntry, type ActivitySettings, type BusinessProfile, type CatalogCategory, type NumberingSettings, type PaymentSettings, type Quote, type QuoteInput, type QuotePricing, type QuoteStatus, type Session, type StaffMember, type StaffPermissions, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type PurchaseStatus } from './types';
+import { DEFAULT_ACTIVITY_SETTINGS, DEFAULT_NUMBERING, DEFAULT_PERMISSIONS, type ActivityDraft, type ActivityEntry, type ActivitySettings, type BusinessProfile, type CatalogCategory, type NumberingSettings, type PaymentSettings, type Quote, type QuoteInput, type QuotePricing, type QuoteStatus, type Session, type StaffMember, type StaffPermissions, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type PurchaseStatus, type PlatformDashboard, type SubRow, type TenantPayment } from './types';
 
 const BUSINESS_FALLBACK = cleanBusiness(null);
 const PAYMENT_FALLBACK = cleanPayment(null);
@@ -235,11 +235,24 @@ export function useSubscription(enabled = true) {
 export function useTenants(enabled: boolean) {
   return useQuery<TenantRow[]>({ queryKey: keys.tenants, queryFn: () => be().listTenants(), enabled, retry: false });
 }
+export function usePlatformDashboard() {
+  return useQuery<PlatformDashboard>({ queryKey: ['platform-dashboard'], queryFn: () => be().platformDashboard(), retry: false, staleTime: 30_000 });
+}
+export function useSubscriptionOverview() {
+  return useQuery<SubRow[]>({ queryKey: ['platform-subs'], queryFn: () => be().platformSubscriptions(), retry: false, staleTime: 30_000 });
+}
+export function useTenantPayments(tenantId: string | null) {
+  return useQuery<TenantPayment[]>({ queryKey: ['platform-payments', tenantId], queryFn: () => be().platformTenantPayments(tenantId!), enabled: !!tenantId, retry: false });
+}
+/** Refresh every Super admin screen after a change. */
+function refreshPlatform(qc: ReturnType<typeof useQueryClient>) {
+  for (const k of [keys.tenants, ['platform-dashboard'], ['platform-subs'], ['platform-payments']]) void qc.invalidateQueries({ queryKey: k });
+}
 export function useSetTenantSubscription() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { tenantId: string; status: SubStatus | null; extendDays: number }) => be().platformSetSubscription(v.tenantId, v.status, v.extendDays),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: keys.tenants }); },
+    onSuccess: () => refreshPlatform(qc),
   });
 }
 
@@ -267,6 +280,8 @@ export function usePlatformActions() {
   return {
     saveTrial: useMutation({ mutationFn: (d: number) => be().platformSaveTrialDays(d), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['trial-days'] }); } }),
     savePlan: useMutation({ mutationFn: (v: { period: BillingPeriod; price: number; active: boolean }) => be().platformSavePlan(v.period, v.price, v.active), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['plans'] }); } }),
+    grantAccess: useMutation({ mutationFn: (v: { tenantId: string; period: BillingPeriod | null; until: string; note: string; amountRupees: number }) => be().platformGrantAccess(v), onSuccess: () => refreshPlatform(qc) }),
+    setNote: useMutation({ mutationFn: (v: { tenantId: string; note: string }) => be().platformSetNote(v.tenantId, v.note), onSuccess: () => refreshPlatform(qc) }),
     upsertPlan: useMutation({ mutationFn: (p: Plan) => be().platformUpsertPlan(p), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['plans'] }); } }),
     deletePlan: useMutation({ mutationFn: (period: BillingPeriod) => be().platformDeletePlan(period), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['plans'] }); } }),
     saveCoupon: useMutation({ mutationFn: (c: Coupon) => be().platformSaveCoupon(c), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['coupons'] }); } }),

@@ -32,6 +32,7 @@ update public.plans set
   popular = case when period = 'quarterly' and not exists (select 1 from public.plans where popular) then true else popular end
 where name is null;
 alter table public.plans alter column name set not null;
+alter table public.plans alter column name set default 'Plan';   -- lets the older setup files be re-run safely
 
 alter table public.plans drop constraint if exists plans_key_format;
 alter table public.plans add constraint plans_key_format check (period ~ '^[a-z0-9][a-z0-9-]{1,29}$');

@@ -4,7 +4,7 @@ import { normalizeEventSlots, occupancyEntries } from './booking';
 import { computeTotals, lineTotal, quoteAdvance } from './pricing';
 import { newId } from './settings';
 import { localISODate } from './format';
-import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck, type PurchaseStatus, type NewPurchase } from './types';
+import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck, type PurchaseStatus, type NewPurchase, type PlatformDashboard, type SubRow, type TenantPayment } from './types';
 
 /**
  * Every screen talks to the database ONLY through this interface.
@@ -49,6 +49,11 @@ export interface Backend {
   platformSaveTrialDays(days: number): Promise<void>;
   platformSavePlan(period: BillingPeriod, priceRupees: number, active: boolean): Promise<void>;
   platformUpsertPlan(plan: Plan): Promise<void>;
+  platformDashboard(): Promise<PlatformDashboard>;
+  platformSubscriptions(): Promise<SubRow[]>;
+  platformGrantAccess(v: { tenantId: string; period: BillingPeriod | null; until: string; note: string; amountRupees: number }): Promise<void>;
+  platformSetNote(tenantId: string, note: string): Promise<void>;
+  platformTenantPayments(tenantId: string): Promise<TenantPayment[]>;
   platformDeletePlan(period: BillingPeriod): Promise<void>;
   platformListCoupons(): Promise<Coupon[]>;
   platformSaveCoupon(c: Coupon): Promise<void>;
@@ -353,6 +358,29 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       const { error } = await client.rpc('platform_save_plan', { p_period: period, p_price_paise: Math.round(priceRupees * 100), p_active: active });
       if (error) throw new Error(error.message);
     },
+    async platformDashboard() {
+      const { data, error } = await client.rpc('platform_dashboard');
+      if (error) throw new Error(/platform_dashboard/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/15-super-admin-dashboard.sql in the Supabase SQL Editor first, then refresh.' : error.message);
+      return data as PlatformDashboard;
+    },
+    async platformSubscriptions() {
+      const { data, error } = await client.rpc('platform_subscription_overview');
+      if (error) throw new Error(/platform_subscription_overview/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/15-super-admin-dashboard.sql in the Supabase SQL Editor first, then refresh.' : error.message);
+      return (data ?? []) as SubRow[];
+    },
+    async platformGrantAccess(v) {
+      const { error } = await client.rpc('platform_grant_access', { p_tenant: v.tenantId, p_period: v.period, p_until: v.until, p_note: v.note, p_amount_paise: Math.round(v.amountRupees * 100) });
+      if (error) throw new Error(error.message);
+    },
+    async platformSetNote(tenantId, note) {
+      const { error } = await client.rpc('platform_set_note', { p_tenant: tenantId, p_note: note });
+      if (error) throw new Error(error.message);
+    },
+    async platformTenantPayments(tenantId) {
+      const { data, error } = await client.rpc('platform_tenant_payments', { p_tenant: tenantId });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as TenantPayment[];
+    },
     async platformUpsertPlan(p) {
       const { error } = await client.rpc('platform_upsert_plan', { p_key: p.period, p_name: p.name, p_months: p.months, p_price_paise: Math.round(p.price * 100), p_description: p.description, p_features: p.features, p_popular: p.popular, p_active: p.active, p_sort: p.sort });
       if (error) throw new Error(/platform_upsert_plan/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/14-custom-plans.sql in the Supabase SQL Editor first, then try again.' : error.message);
@@ -587,6 +615,11 @@ function makeHttpBackend(apiUrl: string): Backend {
     async platformSaveTrialDays() { throw new Error('Not available on Hostinger.'); },
     async platformSavePlan() { throw new Error('Not available on Hostinger.'); },
     async platformUpsertPlan() { throw new Error('Not available on Hostinger.'); },
+    async platformDashboard() { throw new Error('Not available on Hostinger.'); },
+    async platformSubscriptions() { throw new Error('Not available on Hostinger.'); },
+    async platformGrantAccess() { throw new Error('Not available on Hostinger.'); },
+    async platformSetNote() { throw new Error('Not available on Hostinger.'); },
+    async platformTenantPayments() { throw new Error('Not available on Hostinger.'); },
     async platformDeletePlan() { throw new Error('Not available on Hostinger.'); },
     async platformListCoupons() { return []; },
     async platformSaveCoupon() { throw new Error('Not available on Hostinger.'); },

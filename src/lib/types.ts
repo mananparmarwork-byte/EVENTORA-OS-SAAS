@@ -157,3 +157,23 @@ export type PurchaseStatus = {
   workspaceName?: string | null; businessName?: string | null;
 };
 export type NewPurchase = { purchaseId: string; url: string; amount: number };
+
+/** One business as the software owner sees it in Super admin -> Subscriptions. */
+export type SubState = 'trial' | 'trial_ended' | 'renewing' | 'manual_renew' | 'cancelling' | 'past_due' | 'lapsed' | 'free_access' | 'no_plan';
+export type SubRow = {
+  id: string; name: string; slug: string; createdAt: string; ownerEmail: string | null; status: SubStatus | null; state: SubState;
+  period: BillingPeriod | null; planName: string | null; trialEndsAt: string | null; currentPeriodEnd: string | null; endsAt: string | null; daysLeft: number | null;
+  autopay: boolean; manualAccess: boolean; note: string; couponCode: string | null; paymentsCount: number; renewals: number; paid: number;
+  lastPaymentAt: string | null; firstPaymentAt: string | null; members: number; bills: number;
+};
+export type PlatformDashboard = {
+  counts: Partial<Record<SubState, number>>; total: number; mrr: number;
+  revenue: { thisMonth: number; lastMonth: number; last30: number; allTime: number };
+  renewal: { renewed90: number; lapsed90: number; rate: number | null };
+  series: { month: string; revenue: number; signups: number; newPaying: number }[];
+  planMix: { name: string; count: number }[];
+  expiring: { id: string; name: string; ownerEmail: string | null; state: SubState; planName: string | null; endsAt: string; daysLeft: number; autopay: boolean }[];
+  lapsed: { id: string; name: string; ownerEmail: string | null; state: SubState; planName: string | null; endsAt: string | null; daysLeft: number | null }[];
+  recentPayments: { tenant: string; amount: number; planName: string | null; paidAt: string; renewal: boolean; offline: boolean }[];
+};
+export type TenantPayment = { id: string; amount: number; planName: string | null; paidAt: string; offline: boolean };

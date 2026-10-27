@@ -26,6 +26,12 @@
 3. Push the new app code (GitHub deploy runs by itself).
 4. Sign in as the software owner -> sidebar **Super admin** -> **Plans & prices** -> **New plan**. Name, price, duration in months, feature lines, "Most popular", on/off. It shows on the website and Billing page straight away.
 - A plan that was already bought can be switched off but not deleted, and its duration cannot change (create a new plan instead).
+
+## 1c. Super admin dashboard, renewals and giving access (new)
+- Already inside `supabase/RUN-THIS-ALL-IN-ONE.sql` (file 15). If you ran files one by one, also run `supabase/15-super-admin-dashboard.sql`.
+- **Super admin -> Dashboard**: paying customers, monthly recurring revenue, revenue this month, renewal rate, signups chart, who ends soon, who did not renew, latest payments.
+- **Super admin -> Subscriptions & access**: every customer with plan, end date, autopay, renewals, total paid. Filter by Renewing / Manual renew / Cancelling / Payment failed / Didn't renew / On trial / Never paid / Free access. **Manage** lets you give access (free, or paid outside Razorpay with the amount counted in revenue) until a date, add days, suspend, and keep a private note. Buttons copy the signup and buy links to send to customers. Export CSV for Excel.
+- Razorpay connection steps: see `RAZORPAY-SETUP.md`.
 - **Cannot open Super admin?** Your login must be in `platform_admins`. Edit the email in `supabase/make-platform-admin.sql`, run it, then sign out and sign in again. The page itself now tells you this if the login is not the software owner.
 - **Always run `11` last.** If you ever re-run `06` or `08`, run `11` again afterwards.
 - Take a backup first (Database -> Backups): files 05 and 11 change keys and rules.

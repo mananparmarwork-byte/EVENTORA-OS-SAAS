@@ -1,7 +1,13 @@
 // Owner turns autopay off. Access continues until the end of the period already paid for.
 // Deploy:  supabase functions deploy manage-subscription
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { cors, json } from '../_shared.ts';
+// ---- helpers (inlined from _shared.ts so this function is a single self-contained file) ----
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+// ---- end helpers ----
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });

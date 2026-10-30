@@ -217,7 +217,15 @@ async function finishSignIn(client: SupabaseClient, email: string): Promise<NonN
 
 async function fnError(error: unknown): Promise<Error> {
   let msg = error instanceof Error ? error.message : 'Something went wrong.';
-  try { const j = await (error as { context?: Response }).context?.json(); if (j?.error) msg = String(j.error); } catch { /* keep message */ }
+  const res = (error as { context?: Response }).context;
+  try {
+    const j = await res?.clone().json();
+    // our functions reply { error }, Supabase itself replies { message } (e.g. "Invalid JWT", "Requested function was not found")
+    if (j?.error) msg = String(j.error);
+    else if (j?.message) msg = `${j.message} (status ${res?.status})`;
+  } catch {
+    try { const t = await res?.text(); if (t) msg = `${t.slice(0, 200)} (status ${res?.status})`; } catch { /* keep message */ }
+  }
   return new Error(msg);
 }
 

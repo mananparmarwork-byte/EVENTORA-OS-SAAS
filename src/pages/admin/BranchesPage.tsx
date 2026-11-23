@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'wouter';
 import { Building2, CheckCircle2, Loader2, MapPin, Pencil, Phone, Plus, Send, Users } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Spinner, Switch, Textarea, useUi } from '@/components/ui';
 import { useBranchInfo } from '@/lib/branch';
-import { useBranchActions, useCreateRequest, useMyRequests, usePaymentInfo } from '@/lib/apiExt';
+import { useBranchActions, useMyRequests } from '@/lib/apiExt';
 import { useQuotes } from '@/lib/api';
-import { fmtDate, inr, inrCompact } from '@/lib/format';
+import { fmtDate, inrCompact } from '@/lib/format';
 import { quotePaymentState } from '@/lib/pricing';
 import type { Branch } from '@/lib/types';
 
@@ -30,34 +31,11 @@ function BranchForm({ branch, onClose }: { branch: Branch | null; onClose: () =>
   );
 }
 
-function RequestForm({ onClose }: { onClose: () => void }) {
-  const { toast } = useUi();
-  const create = useCreateRequest();
-  const { info } = usePaymentInfo(true);
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
-  const [note, setNote] = useState('');
-  const go = () => create.mutate({ kind: 'branch', message: note, payload: { name, address, phone } }, { onSuccess: () => { toast('Request sent. We will confirm soon.'); onClose(); }, onError: (e) => toast(e.message, 'error') });
-  return (
-    <Modal title="Request another branch" eyebrow="Needs approval" onClose={onClose} width="max-w-lg" footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="gold" onClick={go} disabled={create.isPending}>{create.isPending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send request</Button></>}>
-      <div className="space-y-4">
-        <p className="rounded-xl border border-border bg-input p-3 text-xs text-text-secondary">An extra branch is a paid add-on{info.branchPrice ? ` (${inr(info.branchPrice)})` : ''}. Send the request, pay as shown on the Billing page, and we approve it. The new branch has its own bills, calendar and employees, and you can see everything together.</p>
-        <Field label="Branch name" required><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Restaurant, Race Course" maxLength={60} /></Field>
-        <Field label="Address"><Textarea rows={2} value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} /></Field>
-        <Field label="Branch phone"><Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" maxLength={20} /></Field>
-        <Field label="Anything to tell us?" hint="optional"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="e.g. Payment made by UPI, ref 1234" /></Field>
-      </div>
-    </Modal>
-  );
-}
-
 export function BranchesPage() {
   const { info, isLoading, error } = useBranchInfo();
   const { data: quotes = [] } = useQuotes({ all: true });
   const { data: requests = [] } = useMyRequests(true);
   const [editing, setEditing] = useState<Branch | 'new' | null>(null);
-  const [asking, setAsking] = useState(false);
 
   const stats = useMemo(() => {
     const m = new Map<string, { bills: number; booked: number; received: number }>();
@@ -72,7 +50,7 @@ export function BranchesPage() {
   if (isLoading) return <Spinner label="Loading branches" />;
   if (error) return <Card className="p-8 text-center text-sm text-error">{(error as Error).message}</Card>;
   const full = info.activeCount >= info.limit;
-  const branchRequests = requests.filter((r) => r.kind === 'branch');
+  const branchRequests = requests.filter((r) => r.kind === 'branch' || (r.kind === 'renewal' && Array.isArray(r.payload.newBranches) && r.payload.newBranches.length > 0));
 
   return (
     <div className="space-y-6">
@@ -83,11 +61,11 @@ export function BranchesPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {!full && <Button variant="gold" onClick={() => setEditing('new')}><Plus size={16} /> Add branch</Button>}
-          <Button variant={full ? 'gold' : 'outline'} onClick={() => setAsking(true)}><Send size={15} /> Request another branch</Button>
+          <Link href="/admin/billing"><Button variant={full ? 'gold' : 'outline'}><Send size={15} /> Add a paid branch</Button></Link>
         </div>
       </div>
 
-      {full && <p className="rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-gold">All your branch slots are in use. Send a request for another branch and we will approve it.</p>}
+      {full && <p className="rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-gold">All your branch slots are in use. Open Billing to add an extra branch (a monthly cost). Pay by UPI QR and send the transaction ID: we approve it and the branch appears.</p>}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {info.branches.map((b) => {
@@ -114,12 +92,12 @@ export function BranchesPage() {
       </div>
 
       <Card>
-        <CardHeader title="Your branch requests" subtitle="Requests go to the Eventora team for approval" />
+        <CardHeader title="Your branch requests" subtitle="Paid branch requests wait for approval by the Eventora team" />
         {branchRequests.length === 0 ? <EmptyState icon={<Building2 />} title="No requests yet" text="When you ask for an extra branch it shows here with our answer." /> : (
           <ul className="divide-y divide-border/60">
             {branchRequests.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
-                <span className="min-w-0"><span className="block font-medium text-text">{r.payload.name || r.subject}</span><span className="block text-xs text-text-secondary">Sent {fmtDate(r.createdAt)}{r.note ? ` · ${r.note}` : ''}</span></span>
+                <span className="min-w-0"><span className="block font-medium text-text">{Array.isArray(r.payload.newBranches) && r.payload.newBranches.length ? r.payload.newBranches.map((b: { name: string }) => b.name).join(', ') : r.payload.name || r.subject}</span><span className="block text-xs text-text-secondary">Sent {fmtDate(r.createdAt)}{r.note ? ` · ${r.note}` : ''}</span></span>
                 <Badge tone={REQ_TONE[r.status]}>{r.status === 'pending' ? 'Waiting for approval' : r.status === 'approved' ? <><CheckCircle2 size={12} /> Approved</> : r.status}</Badge>
               </li>
             ))}
@@ -128,7 +106,6 @@ export function BranchesPage() {
       </Card>
 
       {editing && <BranchForm branch={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
-      {asking && <RequestForm onClose={() => setAsking(false)} />}
     </div>
   );
 }

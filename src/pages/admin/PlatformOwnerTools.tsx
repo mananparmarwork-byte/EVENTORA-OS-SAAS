@@ -4,6 +4,7 @@ import { Button, Field, Input, Select, Textarea, useUi } from '@/components/ui';
 import { usePlatformExt, useTenantMeta } from '@/lib/apiExt';
 import { makePassword } from '@/pages/admin/PlatformOwners';
 import { whatsappLink } from '@/lib/settings';
+import { PHONE_ERROR, validPhone } from '@/lib/phone';
 import type { SubRow } from '@/lib/types';
 
 const TYPES = ['Banquet hall', 'Party plot', 'Restaurant', 'Hotel', 'Resort', 'Event company', 'Caterer', 'Other'];
@@ -24,7 +25,10 @@ export function OwnerTools({ row }: { row: SubRow }) {
   const [body, setBody] = useState('');
   useEffect(() => { if (meta) { setType(meta.businessType); setPhone(meta.phone); setLimit(String(meta.branchLimit)); } }, [meta]);
 
-  const saveDetails = () => updateTenant.mutate({ tenantId: row.id, name, businessType: type, phone }, { onSuccess: () => toast('Details saved.'), onError: (e) => toast(e.message, 'error') });
+  const saveDetails = () => {
+    if (!validPhone(phone)) { toast(PHONE_ERROR, 'error'); return; }
+    updateTenant.mutate({ tenantId: row.id, name, businessType: type, phone }, { onSuccess: () => toast('Details saved.'), onError: (e) => toast(e.message, 'error') });
+  };
   const saveLimit = () => setBranchLimit.mutate({ tenantId: row.id, limit: Math.round(Number(limit)) }, { onSuccess: () => toast('Branch slots updated.'), onError: (e) => toast(e.message, 'error') });
   const reset = () => resetPassword.mutate({ tenantId: row.id, password: pw }, { onSuccess: () => { setShownPw(pw); setPw(''); toast('Password changed. Send it to the owner.'); }, onError: (e) => toast(e.message, 'error') });
   const copyPw = async () => { try { await navigator.clipboard.writeText(`Eventora OS\nEmail: ${row.ownerEmail}\nNew password: ${shownPw}`); toast('Copied.'); } catch { toast('Copy is blocked in this browser.', 'error'); } };
@@ -34,11 +38,11 @@ export function OwnerTools({ row }: { row: SubRow }) {
   return (
     <div className="space-y-6">
       <section className="space-y-4">
-        <div><h3 className="font-semibold text-text">Business details</h3><p className="text-xs text-text-secondary">The mobile number is used for WhatsApp reminders.</p></div>
+        <div><h3 className="font-semibold text-text">Business details</h3><p className="text-xs text-text-secondary">The mobile number is required: you use it to call the owner and send WhatsApp reminders.</p></div>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Business name"><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></Field>
           <Field label="Type"><Select value={type} onChange={(e) => setType(e.target.value)}>{[...new Set([type, ...TYPES].filter(Boolean))].map((t) => <option key={t}>{t}</option>)}</Select></Field>
-          <Field label="Owner mobile"><Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" maxLength={20} /></Field>
+          <Field label="Owner mobile" required><Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" maxLength={20} /></Field>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <Button variant="outline" onClick={saveDetails} disabled={updateTenant.isPending}>{updateTenant.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save details</Button>

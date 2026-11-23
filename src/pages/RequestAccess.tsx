@@ -5,6 +5,7 @@ import { Brand } from '@/components/Logo';
 import { Button, Field, Input, Textarea } from '@/components/ui';
 import { submitLead, usePublicContact } from '@/lib/apiExt';
 import { whatsappLink } from '@/lib/settings';
+import { PHONE_ERROR, validPhone } from '@/lib/phone';
 
 /** Eventora accounts are added by the Eventora team. This page tells visitors how to ask for one. */
 export function RequestAccess() {
@@ -18,6 +19,7 @@ export function RequestAccess() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!validPhone(form.phone)) { setError(PHONE_ERROR); return; }
     setBusy(true); setError('');
     try { await submitLead(form); setDone(true); }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not send. Please try again.'); }
@@ -42,8 +44,8 @@ export function RequestAccess() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Your name" required><Input value={form.name} onChange={(e) => set('name', e.target.value)} autoComplete="name" required /></Field>
                 <Field label="Business name"><Input value={form.business} onChange={(e) => set('business', e.target.value)} placeholder="Party plot, banquet, restaurant" /></Field>
-                <Field label="Mobile"><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} inputMode="tel" autoComplete="tel" /></Field>
-                <Field label="Email"><Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} autoComplete="email" /></Field>
+                <Field label="Mobile number" required hint="we will call you on this"><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} inputMode="tel" autoComplete="tel" required minLength={10} /></Field>
+                <Field label="Email" hint="optional"><Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} autoComplete="email" /></Field>
               </div>
               <Field label="Message" hint="optional"><Textarea rows={3} value={form.message} onChange={(e) => set('message', e.target.value)} maxLength={600} /></Field>
               {error && <p className="text-sm text-error" role="alert">{error}</p>}

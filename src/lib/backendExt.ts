@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Audience, AppNotification, BranchInfo, Campaign, InboxCounts, Lead, MessageRule, MessageTemplate, NewOwner, NewOwnerResult, NotificationFeed, OwnerRequest, PaymentInfo, PlatformConfig, PlatformRequest, Preset, PublicContact, RequestKind, SendResult, TenantMeta } from './types';
+import type { BillingQuote, Invoice, InvoicePatch, InvoiceSettings, RequestPayload, Audience, AppNotification, BranchInfo, Campaign, InboxCounts, Lead, MessageRule, MessageTemplate, NewOwner, NewOwnerResult, NotificationFeed, OwnerRequest, PaymentInfo, PlatformConfig, PlatformPayment, NewPayment, PlatformRequest, Preset, PublicContact, RequestKind, SendResult, TenantMeta } from './types';
 
 /**
  * Everything added for: manual access (add owners), messages & automation, requests, multi-branch and saved custom items.
@@ -16,7 +16,14 @@ export interface SaasExt {
   /* owner: inbox, requests, how to pay */
   myNotifications(): Promise<NotificationFeed>;
   markNotificationsRead(ids?: string[]): Promise<void>;
-  createRequest(v: { kind: RequestKind; subject?: string; message?: string; payload?: Record<string, string> }): Promise<string>;
+  createRequest(v: { kind: RequestKind; subject?: string; message?: string; payload?: RequestPayload }): Promise<string>;
+  /** The amount to pay (plan renewal and/or extra branches), worked out by the database. */
+  billingQuote(v: { renew: boolean; period: string; keep: number; newCount: number }): Promise<BillingQuote>;
+  myInvoices(): Promise<Invoice[]>;
+  platformListInvoices(): Promise<Invoice[]>;
+  platformUpdateInvoice(id: string, patch: InvoicePatch): Promise<void>;
+  platformGetInvoiceSettings(): Promise<InvoiceSettings>;
+  platformSaveInvoiceSettings(s: InvoiceSettings): Promise<void>;
   myRequests(): Promise<OwnerRequest[]>;
   getPaymentInfo(): Promise<PaymentInfo>;
   /* public page */
@@ -45,9 +52,16 @@ export interface SaasExt {
   platformAddOwner(v: NewOwner): Promise<NewOwnerResult>;
   platformResetOwnerPassword(tenantId: string, password: string): Promise<void>;
   platformSendEmails(): Promise<{ sent: number; failed: number; skipped: number }>;
+  /* file 18: payments list, mark as paid, clean-up of answered requests, owner's saved mobile */
+  myContactPhone(): Promise<string>;
+  platformListPayments(): Promise<PlatformPayment[]>;
+  platformRecordPayment(v: NewPayment): Promise<string>;
+  platformDeleteRequest(id: string): Promise<void>;
+  platformClearAnswered(): Promise<number>;
+  platformPurge(): Promise<void>;
 }
 
-const MISSING_SQL = 'Run supabase/16-manual-access-messages-branches.sql in the Supabase SQL Editor first, then refresh.';
+const MISSING_SQL = 'Run supabase/16-manual-access-messages-branches.sql and then supabase/18-clients-payments-cleanup.sql and supabase/19-billing-qr-invoices.sql in the Supabase SQL Editor, then refresh.';
 const FN_MISSING = (name: string) => `The "${name}" function is not deployed yet. Run: supabase functions deploy ${name}${name === 'send-message-emails' ? ' --no-verify-jwt' : ''}`;
 
 async function fnBody(error: unknown): Promise<string> {
@@ -106,6 +120,15 @@ export function makeSaasExt(client: SupabaseClient): SaasExt {
     },
     async markNotificationsRead(ids) { await rpc('mark_notifications_read', { p_ids: ids && ids.length ? ids : null }); },
     async createRequest(v) { return String(await rpc<string>('create_request', { p_kind: v.kind, p_subject: v.subject ?? '', p_message: v.message ?? '', p_payload: v.payload ?? {} })); },
+    async billingQuote(v) { return rpc<BillingQuote>('billing_quote', { p_renew: v.renew, p_period: v.period, p_keep: v.keep, p_new: v.newCount }); },
+    async myInvoices() { const { data, error } = await client.rpc('my_invoices'); return error || !Array.isArray(data) ? [] : (data as Invoice[]); },
+    async platformListInvoices() { return (await rpc<Invoice[] | null>('platform_list_invoices')) ?? []; },
+    async platformUpdateInvoice(id, patch) { await rpc('platform_update_invoice', { p_id: id, p: patch }); },
+    async platformGetInvoiceSettings() {
+      const d = await rpc<Partial<InvoiceSettings>>('platform_get_invoice_settings');
+      return { name: d.name ?? '', address: d.address ?? '', gstin: d.gstin ?? '', pan: d.pan ?? '', phone: d.phone ?? '', email: d.email ?? '', terms: d.terms ?? '', footer: d.footer ?? '', prefix: d.prefix ?? 'INV', next: Number(d.next) || 1, gstEnabled: Boolean(d.gstEnabled), gstRate: Number(d.gstRate) || 18 };
+    },
+    async platformSaveInvoiceSettings(s) { await rpc('platform_save_invoice_settings', { p: s }); },
     async myRequests() {
       const { data, error } = await client.rpc('my_requests');
       return error || !Array.isArray(data) ? [] : (data as OwnerRequest[]);
@@ -124,7 +147,7 @@ export function makeSaasExt(client: SupabaseClient): SaasExt {
 
     async platformGetConfig() {
       const d = await rpc<Partial<PlatformConfig>>('platform_get_config');
-      return { whatsapp: d.whatsapp ?? '', phone: d.phone ?? '', email: d.email ?? '', upi: d.upi ?? '', payee: d.payee ?? '', bankText: d.bankText ?? '', instructions: d.instructions ?? '', branchPrice: Number(d.branchPrice) || 0, allowSelfSignup: Boolean(d.allowSelfSignup) };
+      return { whatsapp: d.whatsapp ?? '', phone: d.phone ?? '', email: d.email ?? '', upi: d.upi ?? '', payee: d.payee ?? '', bankText: d.bankText ?? '', instructions: d.instructions ?? '', branchPrice: Number(d.branchPrice) || 0, allowSelfSignup: Boolean(d.allowSelfSignup), requestKeepDays: d.requestKeepDays == null ? 7 : Number(d.requestKeepDays) };
     },
     async platformSaveConfig(c) { await rpc('platform_save_config', { p: c }); },
     async platformListRequests(status) { return (await rpc<PlatformRequest[] | null>('platform_list_requests', { p_status: status ?? null })) ?? []; },
@@ -153,14 +176,24 @@ export function makeSaasExt(client: SupabaseClient): SaasExt {
     },
     async platformResetOwnerPassword(tenantId, password) { await fn('platform-owners', { action: 'resetPassword', tenantId, password }); },
     async platformSendEmails() { return fn<{ sent: number; failed: number; skipped: number }>('send-message-emails', {}); },
+
+    async myContactPhone() { const { data, error } = await client.rpc('my_contact_phone'); return error || typeof data !== 'string' ? '' : data; },
+    async platformListPayments() { return (await rpc<PlatformPayment[] | null>('platform_list_payments')) ?? []; },
+    async platformRecordPayment(v) {
+      return String(await rpc<string>('platform_record_payment', { p_tenant: v.tenantId, p_amount_paise: Math.round(v.amountRupees * 100), p_paid_on: v.paidOn, p_method: v.method, p_reference: v.reference, p_period: v.period || null, p_until: v.until, p_note: v.note }));
+    },
+    async platformDeleteRequest(id) { await rpc('platform_delete_request', { p_id: id }); },
+    async platformClearAnswered() { return Number(await rpc<number>('platform_clear_answered')) || 0; },
+    async platformPurge() { await client.rpc('platform_purge_requests'); },
   };
 }
 
 /** The Hostinger (PHP) version is a single business: none of the above exists there. */
-const EXT_KEYS = ['listBranches', 'saveBranch', 'setStaffBranch', 'getPresets', 'savePresets', 'myNotifications', 'markNotificationsRead', 'createRequest', 'myRequests', 'getPaymentInfo', 'publicContact', 'submitLead', 'platformGetConfig', 'platformSaveConfig', 'platformListRequests', 'platformDecideRequest', 'platformSetBranchLimit', 'platformTenantMeta', 'platformUpdateTenant', 'platformInboxCounts', 'platformListLeads', 'platformSetLead', 'platformPreviewMessage', 'platformSendMessage', 'platformListCampaigns', 'platformListTemplates', 'platformSaveTemplate', 'platformDeleteTemplate', 'platformListRules', 'platformSaveRule', 'platformRunAuto', 'platformAddOwner', 'platformResetOwnerPassword', 'platformSendEmails'];
+const EXT_KEYS = ['listBranches', 'saveBranch', 'setStaffBranch', 'getPresets', 'savePresets', 'myNotifications', 'markNotificationsRead', 'createRequest', 'billingQuote', 'myInvoices', 'platformListInvoices', 'platformUpdateInvoice', 'platformGetInvoiceSettings', 'platformSaveInvoiceSettings', 'myRequests', 'getPaymentInfo', 'publicContact', 'submitLead', 'platformGetConfig', 'platformSaveConfig', 'platformListRequests', 'platformDecideRequest', 'platformSetBranchLimit', 'platformTenantMeta', 'platformUpdateTenant', 'platformInboxCounts', 'platformListLeads', 'platformSetLead', 'platformPreviewMessage', 'platformSendMessage', 'platformListCampaigns', 'platformListTemplates', 'platformSaveTemplate', 'platformDeleteTemplate', 'platformListRules', 'platformSaveRule', 'platformRunAuto', 'platformAddOwner', 'platformResetOwnerPassword', 'platformSendEmails', 'myContactPhone', 'platformListPayments', 'platformRecordPayment', 'platformDeleteRequest', 'platformClearAnswered', 'platformPurge'];
 const unsupportedCall = (name: string) => async () => {
   if (name === 'listBranches') return { branches: [], limit: 1, activeCount: 0, myBranchId: null };
-  if (name === 'getPresets' || name === 'myRequests') return [];
+  if (name === 'getPresets' || name === 'myRequests' || name === 'platformListPayments' || name === 'myInvoices') return [];
+  if (name === 'myContactPhone') return '';
   if (name === 'myNotifications') return { unread: 0, items: [] };
   if (name === 'getPaymentInfo') return {};
   if (name === 'publicContact') return { whatsapp: '', phone: '', email: '' };

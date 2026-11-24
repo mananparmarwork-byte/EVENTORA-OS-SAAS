@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarClock, Copy, Download, IndianRupee, KeyRound, Loader2, RefreshCw, Save, Search, TrendingUp, Users } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Copy, Download, KeyRound, Loader2, RefreshCw, Save, Search, TrendingUp, Users } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, Spinner, Textarea, useUi } from '@/components/ui';
 import { usePlans, usePlatformActions, usePlatformDashboard, useSetTenantSubscription, useSubscriptionOverview, useTenantPayments } from '@/lib/api';
 import { cn, fmtDate, inr } from '@/lib/format';
 import { OwnerTools } from '@/pages/admin/PlatformOwnerTools';
-import { ContactButtons, PhoneLink } from '@/components/Contact';
-import { useTenantMeta } from '@/lib/apiExt';
-import { STATUS_META, clientStatus } from '@/pages/admin/platformShared';
 import type { SubRow, SubState } from '@/lib/types';
 
 type Tone = 'success' | 'gold' | 'warning' | 'error' | 'neutral';
@@ -262,15 +259,12 @@ export function SubscriptionsTab({ initialFilter = 'all', initialSearch = '' }: 
 const dateInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (base: Date, n: number) => { const x = new Date(base); x.setDate(x.getDate() + n); return x; };
 
-export function ManageModal({ row, onClose, onPaid }: { row: SubRow; onClose: () => void; onPaid?: () => void }) {
+function ManageModal({ row, onClose }: { row: SubRow; onClose: () => void }) {
   const { toast, confirm } = useUi();
   const { all: plans } = usePlans();
   const { grantAccess, setNote } = usePlatformActions();
   const quick = useSetTenantSubscription();
   const { data: payments = [], isLoading: loadingPay } = useTenantPayments(row.id);
-  const { data: metas } = useTenantMeta();
-  const phone = metas?.find((m) => m.id === row.id)?.phone ?? '';
-  const st = STATUS_META[clientStatus(row)];
 
   const running = row.endsAt && row.daysLeft != null && row.daysLeft >= 0 && row.daysLeft < 3650 ? new Date(row.endsAt) : new Date();
   const [period, setPeriod] = useState<string>('');
@@ -295,13 +289,8 @@ export function ManageModal({ row, onClose, onPaid }: { row: SubRow; onClose: ()
     <Modal title={row.name} eyebrow="Manage customer" onClose={onClose} width="max-w-2xl">
       <div className="space-y-6">
         <div className="rounded-2xl border border-border p-4">
-          <div className="flex flex-wrap items-center gap-2"><Badge tone={st.tone}>{st.label}</Badge>{row.autopay && <Badge tone="success">Autopay on</Badge>}{row.couponCode && <Badge tone="gold">{row.couponCode}</Badge>}</div>
-          <p className="mt-2 text-sm text-text-secondary">{st.help}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-input px-3 py-2.5">
-            <span className="text-xs text-text-secondary">Mobile</span><PhoneLink phone={phone} />
-            <ContactButtons phone={phone} message={`Hello ${row.name},`} />
-            {onPaid && <Button size="sm" variant="gold" className="ml-auto" onClick={onPaid}><IndianRupee size={13} /> Mark as paid</Button>}
-          </div>
+          <div className="flex flex-wrap items-center gap-2"><Badge tone={STATE[row.state].tone}>{STATE[row.state].label}</Badge>{row.autopay && <Badge tone="success">Autopay on</Badge>}{row.couponCode && <Badge tone="gold">{row.couponCode}</Badge>}</div>
+          <p className="mt-2 text-sm text-text-secondary">{STATE[row.state].help}</p>
           <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-xs text-text-secondary sm:grid-cols-2">
             <div className="flex justify-between"><dt>Owner</dt><dd className="text-text">{row.ownerEmail ?? '—'}</dd></div>
             <div className="flex justify-between"><dt>Plan</dt><dd className="text-text">{row.planName ?? '—'}</dd></div>

@@ -111,10 +111,7 @@ alter table public.quotes       add column if not exists branch_id uuid referenc
 alter table public.activity_log add column if not exists branch_id uuid references public.branches(id) on delete set null;
 alter table public.members      add column if not exists branch_id uuid references public.branches(id) on delete set null;
 
--- the SQL Editor has no signed-in user, so the employee-rules trigger would block this one-time backfill: switch it off for just this statement
-alter table public.quotes disable trigger enforce_staff_rules_trg;
 update public.quotes q set branch_id = (select b.id from public.branches b where b.tenant_id = q.tenant_id and b.is_main) where q.branch_id is null;
-alter table public.quotes enable trigger enforce_staff_rules_trg;
 update public.members m set branch_id = (select b.id from public.branches b where b.tenant_id = m.tenant_id and b.is_main) where m.role = 'staff' and m.branch_id is null;
 update public.activity_log a set branch_id = coalesce(
     (select q.branch_id from public.quotes q where q.tenant_id = a.tenant_id and q.reference = a.reference limit 1),

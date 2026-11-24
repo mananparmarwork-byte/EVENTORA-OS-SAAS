@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Check, CheckCircle2, Copy, Inbox, KeyRound, Loader2, MessageCircle, Save, Send, Trash2, UserPlus, Wand2, XCircle } from 'lucide-react';
-import { ContactButtons, PhoneLink } from '@/components/Contact';
-import { PHONE_ERROR, validPhone } from '@/lib/phone';
+import { Building2, Check, CheckCircle2, Copy, Inbox, KeyRound, Loader2, MessageCircle, Save, Send, UserPlus, Wand2, XCircle } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, Spinner, Switch, Textarea, useUi } from '@/components/ui';
 import { usePlans, useSubscriptionOverview } from '@/lib/api';
 import { usePlatformConfig, usePlatformExt, usePlatformLeads, usePlatformRequests } from '@/lib/apiExt';
@@ -52,7 +50,6 @@ export function AddOwnerModal({ onClose, prefill }: { onClose: () => void; prefi
 
   const go = () => {
     if (mode === 'existing' && !tenantId) { toast('Choose the business.', 'error'); return; }
-    if (mode === 'new' && !validPhone(phone)) { toast(PHONE_ERROR, 'error'); return; }
     if (access === 'until' && mode === 'new' && !until) { toast('Choose the access end date.', 'error'); return; }
     const rupees = access === 'until' && mode === 'new' && kind === 'paid' ? Number(amount) || 0 : 0;
     addOwner.mutate({ email: email.trim(), password, businessName: businessName.trim(), businessType, phone: phone.trim(), period: mode === 'new' && access === 'until' ? period : '', until: mode === 'new' && access === 'until' ? until : '', amountRupees: rupees, note: note.trim(), tenantId: mode === 'existing' ? tenantId : undefined },
@@ -99,7 +96,7 @@ export function AddOwnerModal({ onClose, prefill }: { onClose: () => void; prefi
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Owner email" required hint="this is their login"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="owner@example.com" autoComplete="off" /></Field>
-          <Field label="Owner mobile" required hint="you will call and WhatsApp on this"><Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="98765 43210" /></Field>
+          <Field label="Owner mobile" hint="for WhatsApp reminders"><Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="98765 43210" /></Field>
           <Field label="Password" required hint="10+ characters" className="sm:col-span-2">
             <div className="flex gap-2"><Input value={password} onChange={(e) => setPassword(e.target.value)} className="font-mono" autoComplete="off" /><Button variant="outline" onClick={() => setPassword(makePassword())} aria-label="Generate a password"><Wand2 size={15} /> Generate</Button></div>
           </Field>
@@ -181,7 +178,6 @@ function DecideModal({ req, onClose }: { req: PlatformRequest; onClose: () => vo
           )}
           {req.message && <p className="mt-2 whitespace-pre-line text-xs text-text-secondary">{req.message}</p>}
           <p className="mt-2 text-[11px] text-text-disabled">{req.ownerEmail} · {fmtDate(req.createdAt)}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2"><PhoneLink phone={req.phone || req.payload.contact} /><ContactButtons phone={req.phone || req.payload.contact} message={`Hello ${req.business},`} /></div>
         </div>
 
         {renewing && (
@@ -212,11 +208,11 @@ function LeadRow({ l, onMake }: { l: Lead; onMake: (l: Lead) => void }) {
     <li className="flex flex-wrap items-center gap-3 px-5 py-4">
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-text">{l.name}{l.business && <span className="text-text-secondary">· {l.business}</span>}<Badge tone={l.status === 'new' ? 'gold' : l.status === 'contacted' ? 'info' : 'neutral'}>{l.status}</Badge></p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-text-secondary"><PhoneLink phone={l.phone} className="text-xs" />{l.email && <span>· {l.email}</span>}<span>· {fmtDate(l.createdAt)}</span></p>
+        <p className="mt-0.5 text-xs text-text-secondary">{[l.phone, l.email].filter(Boolean).join(' · ') || 'No contact'} · {fmtDate(l.createdAt)}</p>
         {l.message && <p className="mt-1 text-xs text-text-secondary">{l.message}</p>}
       </div>
       <div className="flex flex-wrap gap-2">
-        <ContactButtons phone={l.phone} message={`Hello ${l.name}, thank you for your interest in Eventora OS.`} onWhatsapp={() => l.status === 'new' && set('contacted')} />
+        {l.phone && <a href={whatsappLink(l.phone, `Hello ${l.name}, thank you for your interest in Eventora OS.`)} target="_blank" rel="noreferrer" onClick={() => l.status === 'new' && set('contacted')}><Button size="sm" variant="outline"><MessageCircle size={13} /> WhatsApp</Button></a>}
         <Button size="sm" variant="gold" onClick={() => onMake(l)}><UserPlus size={13} /> Create owner</Button>
         {l.status !== 'done' && <Button size="sm" variant="ghost" onClick={() => set('done')}>Done</Button>}
         <Button size="sm" variant="ghost" onClick={() => set('delete')}>Delete</Button>
@@ -225,21 +221,8 @@ function LeadRow({ l, onMake }: { l: Lead; onMake: (l: Lead) => void }) {
   );
 }
 
-export function RequestsTab({ initial = 'pending' }: { initial?: 'pending' | 'all' | 'leads' }) {
-  const { toast, confirm } = useUi();
-  const { deleteRequest, clearAnswered, purge } = usePlatformExt();
-  const [filter, setFilter] = useState<'pending' | 'all' | 'leads'>(initial);
-  useEffect(() => { setFilter(initial); }, [initial]);
-  // answered requests older than your auto-delete setting (Settings) are cleared whenever this tab opens
-  useEffect(() => { purge.mutate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const remove = async (r: PlatformRequest) => {
-    if (!(await confirm({ title: `Delete this ${KIND_LABEL[r.kind].toLowerCase()} request?`, text: `${r.business} · ${r.subject}. Payments you recorded are not affected.`, confirmLabel: 'Delete', danger: true }))) return;
-    deleteRequest.mutate(r.id, { onSuccess: () => toast('Deleted.'), onError: (e) => toast(e.message, 'error') });
-  };
-  const clearAll = async () => {
-    if (!(await confirm({ title: 'Delete all answered requests?', text: 'Removes every approved, declined or replied request and every finished access lead. Requests still waiting stay. Payments are not affected.', confirmLabel: 'Delete answered', danger: true }))) return;
-    clearAnswered.mutate(undefined, { onSuccess: (n) => toast(n ? `${n} deleted.` : 'Nothing to delete.'), onError: (e) => toast(e.message, 'error') });
-  };
+export function RequestsTab() {
+  const [filter, setFilter] = useState<'pending' | 'all' | 'leads'>('pending');
   const reqs = usePlatformRequests(filter === 'pending' ? 'pending' : undefined);
   const leads = usePlatformLeads();
   const [open, setOpen] = useState<PlatformRequest | null>(null);
@@ -249,14 +232,11 @@ export function RequestsTab({ initial = 'pending' }: { initial?: 'pending' | 'al
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h2 className="font-display text-2xl font-semibold text-text">Requests</h2><p className="mt-1 text-sm text-text-secondary">Renewal and branch requests, owner messages and people asking for access. Answered ones are cleared automatically (see Settings), or delete them yourself.</p></div>
-        <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => void clearAll()} disabled={clearAnswered.isPending}><Trash2 size={13} /> Clear answered</Button>
+        <div><h2 className="font-display text-2xl font-semibold text-text">Requests</h2><p className="mt-1 text-sm text-text-secondary">Extra-branch requests, renewal requests with payment references, messages from owners, and people asking for access.</p></div>
         <div className="flex flex-wrap gap-1 rounded-2xl border border-border bg-surface p-1">
           {([['pending', 'Waiting', 0], ['all', 'All requests', 0], ['leads', 'Access leads', newLeads]] as const).map(([id, label, n]) => (
             <button key={id} type="button" onClick={() => setFilter(id)} className={cn('flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors', filter === id ? 'bg-gold text-text-on-gold' : 'text-text-secondary hover:text-text')}>{label}{n > 0 && <span className="grid min-w-5 place-items-center rounded-full bg-obsidian/20 px-1.5 text-[11px] font-bold">{n}</span>}</button>
           ))}
-        </div>
         </div>
       </div>
 
@@ -275,14 +255,9 @@ export function RequestsTab({ initial = 'pending' }: { initial?: 'pending' | 'al
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-text">{r.business}<Badge tone={STATUS_TONE[r.status]}>{r.status === 'pending' ? 'Waiting' : r.status}</Badge><Badge>{KIND_LABEL[r.kind]}</Badge></p>
                     <p className="mt-0.5 truncate text-xs text-text-secondary">{r.subject}{r.kind === 'renewal' && r.payload.reference ? ` · ref ${r.payload.reference}` : ''}{r.kind === 'renewal' && r.payload.quote?.total ? ` · ${inr(Number(r.payload.quote.total))}` : ''} · {fmtDate(r.createdAt)}</p>
-                    <p className="mt-1"><PhoneLink phone={r.phone || r.payload.contact} className="text-xs" /></p>
                     {r.status !== 'pending' && r.note && <p className="mt-0.5 truncate text-[11px] italic text-gold">Your note: {r.note}</p>}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <ContactButtons phone={r.phone || r.payload.contact} message={`Hello ${r.business},`} />
-                    {r.status === 'pending' ? <Button size="sm" variant="gold" onClick={() => setOpen(r)}>{r.kind === 'support' ? 'Reply' : 'Review'}</Button> : <span className="text-[11px] text-text-disabled">{r.decidedAt ? fmtDate(r.decidedAt) : ''}</span>}
-                    <Button size="sm" variant="ghost" title="Delete" onClick={() => void remove(r)} disabled={deleteRequest.isPending}><Trash2 size={14} /></Button>
-                  </div>
+                  {r.status === 'pending' ? <Button size="sm" variant="gold" onClick={() => setOpen(r)}>{r.kind === 'support' ? 'Reply' : 'Review'}</Button> : <span className="text-[11px] text-text-disabled">{r.decidedAt ? fmtDate(r.decidedAt) : ''}</span>}
                 </li>
               ))}
             </ul>
@@ -318,11 +293,6 @@ export function SettingsTab() {
           <Field label="Name on the UPI / account"><Input value={c.payee} onChange={(e) => set('payee', e.target.value)} /></Field>
           <Field label="Bank details" hint="optional" className="sm:col-span-2"><Textarea rows={3} value={c.bankText} onChange={(e) => set('bankText', e.target.value)} placeholder={'Account name\nAccount number\nIFSC'} /></Field>
           <Field label="Payment instructions" className="sm:col-span-2"><Textarea rows={2} value={c.instructions} onChange={(e) => set('instructions', e.target.value)} /></Field>
-          <Field label="Auto-delete answered requests" hint="removed from the Requests list; your payments stay in Payments" className="sm:col-span-2">
-            <Select value={String(c.requestKeepDays)} onChange={(e) => set('requestKeepDays', Number(e.target.value))}>
-              <option value="-1">Never (I delete them myself)</option><option value="0">Right after I answer them</option><option value="7">7 days after I answer</option><option value="30">30 days after I answer</option><option value="90">90 days after I answer</option>
-            </Select>
-          </Field>
           <div className="sm:col-span-2"><Switch checked={c.allowSelfSignup} onChange={(v) => set('allowSelfSignup', v)} label="Allow people to create a business by themselves" description="Keep this OFF for manual access. Also turn off “Allow new users to sign up” in Supabase → Authentication." /></div>
         </div>
         <div className="flex justify-end border-t border-border/70 px-5 py-4"><Button variant="gold" disabled={saveConfig.isPending} onClick={() => saveConfig.mutate(c, { onSuccess: () => toast('Settings saved.'), onError: (e) => toast(e.message, 'error') })}>{saveConfig.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Save</Button></div>

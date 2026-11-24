@@ -5,8 +5,6 @@ import { KIND_STYLE } from '@/components/noticeStyle';
 import { useCreateRequest, useMarkRead, useMyRequests, useNotifications, usePaymentInfo } from '@/lib/apiExt';
 import { cn, fmtDate } from '@/lib/format';
 import { whatsappLink } from '@/lib/settings';
-import { MobileField, useMobile } from '@/components/MobileField';
-import { PHONE_ERROR, validPhone } from '@/lib/phone';
 import { useLocation } from 'wouter';
 
 const REQ_TONE = { pending: 'warning', approved: 'success', rejected: 'error', closed: 'neutral' } as const;
@@ -24,13 +22,9 @@ export function MessagesPage() {
   const [tab, setTab] = useState<'inbox' | 'contact'>('inbox');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
-  const [mobile, setMobile] = useMobile();
   const wa = (info.whatsapp ?? '').replace(/\D/g, '');
 
-  const send = () => {
-    if (!validPhone(mobile)) { toast(PHONE_ERROR, 'error'); return; }
-    create.mutate({ kind: 'support', subject, message, payload: { contact: mobile.trim() } }, { onSuccess: () => { toast('Message sent.'); setSubject(''); setMessage(''); }, onError: (e) => toast(e.message, 'error') });
-  };
+  const send = () => create.mutate({ kind: 'support', subject, message }, { onSuccess: () => { toast('Message sent.'); setSubject(''); setMessage(''); }, onError: (e) => toast(e.message, 'error') });
 
   return (
     <div className="space-y-6">
@@ -73,7 +67,6 @@ export function MessagesPage() {
           <Card>
             <CardHeader title="Write to us" subtitle="Questions, problems or ideas. You get an instant reply and then our answer." />
             <div className="space-y-4 p-5">
-              <MobileField value={mobile} onChange={setMobile} />
               <Field label="Subject" required><Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={120} placeholder="e.g. Need help with GST on bills" /></Field>
               <Field label="Message" required><Textarea rows={5} value={message} onChange={(e) => setMessage(e.target.value)} maxLength={1500} /></Field>
               <div className="flex flex-wrap gap-2">

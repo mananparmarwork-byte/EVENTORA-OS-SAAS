@@ -197,7 +197,7 @@ export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'closed';
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
 export type RequestPayload = Record<string, any>;
 export type OwnerRequest = { id: string; kind: RequestKind; status: RequestStatus; subject: string; message: string; payload: RequestPayload; createdAt: string; decidedAt: string | null; note: string };
-export type PlatformRequest = OwnerRequest & { tenantId: string; business: string; ownerEmail: string | null; phone: string; amount: number; branchLimit: number; branchesUsed: number; periodEnd?: string | null; subStatus?: string | null };
+export type PlatformRequest = OwnerRequest & { tenantId: string; business: string; ownerEmail: string | null; phone: string; amount: number; branchLimit: number; branchesUsed: number; periodEnd: string | null; subStatus: string | null };
 export type Lead = { id: string; createdAt: string; name: string; business: string; phone: string; email: string; message: string; status: 'new' | 'contacted' | 'done' };
 export type InboxCounts = { requests: number; leads: number };
 
@@ -209,15 +209,13 @@ export type Campaign = { id: string; createdAt: string; title: string; body: str
 export type MessageTemplate = { id: string; name: string; title: string; body: string; kind: NoticeKind; builtin: boolean };
 export type MessageRule = { key: string; label: string; description: string; trigger: 'before_end' | 'after_end' | 'event'; appliesTo: 'any' | 'trial' | 'paid'; days: number; enabled: boolean; title: string; body: string; kind: NoticeKind; channels: string[]; sent: number };
 
-export type PlatformConfig = { whatsapp: string; phone: string; email: string; upi: string; payee: string; bankText: string; instructions: string; branchPrice: number; allowSelfSignup: boolean; requestKeepDays: number };
+export type PlatformConfig = { whatsapp: string; phone: string; email: string; upi: string; payee: string; bankText: string; instructions: string; branchPrice: number; allowSelfSignup: boolean };
 export type PaymentInfo = Partial<PlatformConfig>;
-/** One payment you received (a row of the Payments list). */
-export type PlatformPayment = { id: string; tenantId: string; business: string; phone: string; ownerEmail: string | null; amount: number; period: string | null; planName: string | null; paidAt: string; offline: boolean; method: string; reference: string; note: string };
-export type NewPayment = { tenantId: string; amountRupees: number; paidOn: string; method: string; reference: string; period: string | null; until: string | null; note: string };
 export type PublicContact = { whatsapp: string; phone: string; email: string };
 export type TenantMeta = { id: string; businessType: string; phone: string; branchLimit: number; branches: number; owners: number; unread: number };
 export type NewOwner = { email: string; password: string; businessName: string; businessType: string; phone: string; period: string; until: string; amountRupees: number; note: string; tenantId?: string };
 export type NewOwnerResult = { email: string; name: string; slug: string; existing: boolean; linkedExistingLogin: boolean; tenantId: string };
+
 
 /* ---------------------------------------------- Billing quote and invoices --- */
 export type QuoteLine = { label: string; amount: number };

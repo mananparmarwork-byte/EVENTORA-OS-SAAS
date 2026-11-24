@@ -74,7 +74,6 @@ Deno.serve(async (req) => {
       const tenantId = String(body.tenantId ?? '');
       if (tenantId && !UUID.test(tenantId)) return json({ error: 'Unknown business.' }, 400);
       if (!tenantId && String(body.businessName ?? '').trim().length < 2) return json({ error: 'Enter the business name.' }, 400);
-      if (!tenantId && String(body.phone ?? '').replace(/\D/g, '').length < 10) return json({ error: 'Enter the owner mobile number (at least 10 digits).' }, 400);
       const until = untilIso(body.until);
       if (body.until && !until) return json({ error: 'The access date is not valid.' }, 400);
       if (until && new Date(until).getTime() <= Date.now()) return json({ error: 'Choose an access date in the future.' }, 400);

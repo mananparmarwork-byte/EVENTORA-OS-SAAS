@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getBackend } from './backend';
-import type { BillingQuote, Invoice, InvoicePatch, InvoiceSettings, RequestPayload, Audience, Campaign, InboxCounts, Lead, MessageRule, MessageTemplate, NewOwner, NotificationFeed, OwnerRequest, PaymentInfo, PlatformConfig, PlatformPayment, PlatformRequest, Preset, PublicContact, RequestKind, TenantMeta } from './types';
+import type { BillingQuote, Invoice, InvoicePatch, InvoiceSettings, RequestPayload, Audience, Campaign, InboxCounts, Lead, MessageRule, MessageTemplate, NewOwner, NotificationFeed, OwnerRequest, PaymentInfo, PlatformConfig, PlatformRequest, Preset, PublicContact, RequestKind, TenantMeta } from './types';
 
 const be = () => getBackend();
 
@@ -60,7 +60,7 @@ export const submitLead = (v: { name: string; business: string; phone: string; e
 /* ----------------------------------------------------- software owner --- */
 function refreshPlatformExt(qc: ReturnType<typeof useQueryClient>) {
   for (const k of [['platform-requests'], ['platform-leads'], ['inbox-counts'], ['tenant-meta'], ['platform-campaigns'], ['platform-templates'], ['platform-rules'], ['platform-config'],
-    ['platform-subs'], ['platform-dashboard'], ['tenants'], ['platform-payments'], ['platform-ledger'], ['platform-invoices'], ['invoice-settings'], ['my-invoices']]) void qc.invalidateQueries({ queryKey: k });
+    ['platform-invoices'], ['invoice-settings'], ['platform-subs'], ['platform-dashboard'], ['tenants'], ['platform-payments']]) void qc.invalidateQueries({ queryKey: k });
 }
 export function usePlatformConfig(enabled = true) { return useQuery<PlatformConfig>({ queryKey: ['platform-config'], queryFn: () => be().platformGetConfig(), enabled, retry: false }); }
 export function useInboxCounts(enabled = true) { return useQuery<InboxCounts>({ queryKey: ['inbox-counts'], queryFn: () => be().platformInboxCounts(), enabled, retry: false, refetchInterval: 60_000 }); }
@@ -76,8 +76,6 @@ export function usePreviewMessage(v: { title: string; body: string; audience: Au
 
 export function usePlatformInvoices() { return useQuery<Invoice[]>({ queryKey: ['platform-invoices'], queryFn: () => be().platformListInvoices(), retry: false }); }
 export function useInvoiceSettings() { return useQuery<InvoiceSettings>({ queryKey: ['invoice-settings'], queryFn: () => be().platformGetInvoiceSettings(), retry: false }); }
-export function useMyContactPhone(enabled = true) { return useQuery<string>({ queryKey: ['my-contact-phone'], queryFn: () => be().myContactPhone(), enabled, staleTime: 60_000, retry: false }); }
-export function usePlatformLedger() { return useQuery<PlatformPayment[]>({ queryKey: ['platform-ledger'], queryFn: () => be().platformListPayments(), retry: false, staleTime: 20_000 }); }
 
 export function usePlatformExt() {
   const qc = useQueryClient();
@@ -95,12 +93,8 @@ export function usePlatformExt() {
     runAuto: useMutation({ mutationFn: () => be().platformRunAuto(), onSuccess: done }),
     addOwner: useMutation({ mutationFn: (v: NewOwner) => be().platformAddOwner(v), onSuccess: done }),
     resetPassword: useMutation({ mutationFn: (v: { tenantId: string; password: string }) => be().platformResetOwnerPassword(v.tenantId, v.password) }),
-    sendEmails: useMutation({ mutationFn: () => be().platformSendEmails() }),
     updateInvoice: useMutation({ mutationFn: (v: { id: string; patch: InvoicePatch }) => be().platformUpdateInvoice(v.id, v.patch), onSuccess: done }),
     saveInvoiceSettings: useMutation({ mutationFn: (s: InvoiceSettings) => be().platformSaveInvoiceSettings(s), onSuccess: done }),
-    recordPayment: useMutation({ mutationFn: (v: Parameters<ReturnType<typeof getBackend>['platformRecordPayment']>[0]) => be().platformRecordPayment(v), onSuccess: done }),
-    deleteRequest: useMutation({ mutationFn: (id: string) => be().platformDeleteRequest(id), onSuccess: done }),
-    clearAnswered: useMutation({ mutationFn: () => be().platformClearAnswered(), onSuccess: done }),
-    purge: useMutation({ mutationFn: () => be().platformPurge(), onSuccess: done }),
+    sendEmails: useMutation({ mutationFn: () => be().platformSendEmails() }),
   };
 }

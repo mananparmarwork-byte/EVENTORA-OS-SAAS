@@ -1,5 +1,5 @@
 -- =====================================================================================
--- 19 - BILLING: UPI QR with the exact amount, monthly extra-branch fee, one request for
+-- 18 - BILLING: UPI QR with the exact amount, monthly extra-branch fee, one request for
 --      "renew plan + add branches", and an automatic invoice when you approve.
 --
 --  * Extra branch = a MONTHLY fee per branch (Super admin -> Settings -> "Extra branch fee per month").
@@ -9,16 +9,13 @@
 --  * Extra branches that are NOT paid again at renewal are switched off (their data is kept).
 --  * When you approve, an invoice is created automatically (GST optional, everything editable by you).
 --
--- Run ONCE in Supabase -> SQL Editor, AFTER file 16 and 18-clients-payments-cleanup.sql. Safe to run again.
--- It keeps everything from file 18: mobile number required, payment method/reference on payments, auto-delete of answered requests.
+-- Run ONCE in Supabase -> SQL Editor, AFTER file 16. Safe to run again.
 -- =====================================================================================
 
 do $$
 begin
-  if to_regclass('public.branches') is null or to_regprocedure('public.create_request(text,text,text,jsonb)') is null
-     or to_regprocedure('public.platform_record_payment(uuid,integer,date,text,text,text,timestamptz,text)') is null
-     or to_regprocedure('public._purge_requests()') is null then
-    raise exception 'Run file 16 and then 18-clients-payments-cleanup.sql first. Nothing was changed.';
+  if to_regclass('public.branches') is null or to_regprocedure('public.create_request(text,text,text,jsonb)') is null then
+    raise exception 'Run file 16-manual-access-messages-branches.sql first. Nothing was changed.';
   end if;
 end $$;
 
@@ -160,14 +157,9 @@ returns uuid language plpgsql security definer set search_path = public as $$
 declare
   t uuid := public.my_tenant(); rid uuid; pl jsonb := coalesce(p_payload, '{}'::jsonb); nm text;
   subj text := left(btrim(coalesce(p_subject, '')), 120); msg text := left(btrim(coalesce(p_message, '')), 1500);
-  q jsonb; names jsonb := '[]'::jsonb; el jsonb; v_renew boolean; v_ref text; n integer; joined text; ph text;
+  q jsonb; names jsonb := '[]'::jsonb; el jsonb; v_renew boolean; v_ref text; n integer; joined text;
 begin
   if t is null or not public.is_admin() then raise exception 'Only the owner can send requests.'; end if;
-  -- the owner's mobile number is required (so you can call them); it is remembered on the business
-  ph := left(btrim(coalesce(pl ->> 'contact', '')), 20);
-  if ph = '' then ph := coalesce((select phone from public.tenants where id = t), ''); end if;
-  if char_length(regexp_replace(ph, '[^0-9]', '', 'g')) < 10 then raise exception 'Please enter your mobile number (at least 10 digits) so we can call you.'; end if;
-  update public.tenants set phone = ph where id = t and coalesce(phone, '') <> ph;
   if p_kind not in ('branch', 'renewal', 'support') then raise exception 'Unknown request type.'; end if;
   if jsonb_typeof(pl) <> 'object' then raise exception 'Request details are not valid.'; end if;
   if (select count(*) from public.requests where tenant_id = t and status = 'pending') >= 10 then
@@ -206,7 +198,6 @@ begin
     pl := '{}'::jsonb;
   end if;
 
-  pl := pl || jsonb_build_object('contact', ph);
   insert into public.requests (tenant_id, created_by, created_by_email, kind, subject, message, payload)
   values (t, auth.uid(), auth.jwt() ->> 'email', p_kind, subj, msg, pl) returning id into rid;
 
@@ -309,8 +300,7 @@ begin
         insert into public.branches (tenant_id, name, address, phone) values (r.tenant_id, bn, coalesce(r.payload ->> 'address', ''), coalesce(r.payload ->> 'phone', ''));
       end if;
       if coalesce(p_amount_paise, 0) > 0 then
-        insert into public.subscription_payments (id, tenant_id, amount_paise, period, method, reference)
-        values ('manual-branch-' || gen_random_uuid()::text, r.tenant_id, p_amount_paise, 'extra-branch', 'UPI / bank (owner request)', left(coalesce(r.payload ->> 'reference', ''), 80));
+        insert into public.subscription_payments (id, tenant_id, amount_paise, period) values ('manual-branch-' || gen_random_uuid()::text, r.tenant_id, p_amount_paise, 'extra-branch');
       end if;
       perform public._fire_event('branch_approved', r.tenant_id, jsonb_build_object('branch', coalesce(bn, ''), 'note', note), r.id::text);
     else
@@ -332,13 +322,8 @@ begin
         per := coalesce(nullif(p_period, ''), nullif(pl ->> 'period', ''));
         if per is not null and not exists (select 1 from public.plans where period = per) then per := null; end if;
         perform public._grant_access_core(r.tenant_id, per, p_until, 'Renewal request approved', paid);
-        if paid > 0 then
-          update public.subscription_payments set method = 'UPI / bank (owner request)', reference = left(coalesce(pl ->> 'reference', ''), 80)
-           where id = (select id from public.subscription_payments where tenant_id = r.tenant_id and id like 'manual-%' and method is null order by paid_at desc limit 1);
-        end if;
       elsif paid > 0 then
-        insert into public.subscription_payments (id, tenant_id, amount_paise, period, method, reference)
-        values ('manual-branch-' || gen_random_uuid()::text, r.tenant_id, paid, 'extra-branch', 'UPI / bank (owner request)', left(coalesce(pl ->> 'reference', ''), 80));
+        insert into public.subscription_payments (id, tenant_id, amount_paise, period) values ('manual-branch-' || gen_random_uuid()::text, r.tenant_id, paid, 'extra-branch');
       end if;
 
       -- branches (requests made from the new Billing page carry "keep" / "newBranches")
@@ -381,7 +366,6 @@ begin
   update public.requests set status = p_status, decided_at = now(), decided_by = auth.uid(), decision_note = note,
          amount_paise = case when p_status = 'approved' then coalesce(nullif(p_amount_paise, 0), round(coalesce((payload -> 'quote' ->> 'total')::numeric, 0) * 100)::integer, 0) else 0 end
    where id = p_id;
-  perform public._purge_requests();
 end $$;
 
 -- ------------------------------------------------------------------ invoices: read / edit ----
@@ -506,6 +490,4 @@ notify pgrst, 'reload schema';
 select 'invoice table exists' as check, case when to_regclass('public.subscription_invoices') is not null then 'OK' else 'MISSING' end
 union all select 'billing quote function exists', case when to_regprocedure('public.billing_quote(boolean,text,integer,integer)') is not null then 'OK' else 'MISSING' end
 union all select 'invoice settings exist', case when exists (select 1 from public.platform_settings where key = 'invoice') then 'OK' else 'MISSING' end
-union all select 'mobile required (requests)', case when pg_get_functiondef('public.create_request(text,text,text,jsonb)'::regprocedure) like '%mobile number%' then 'OK' else 'OLD VERSION' end
-union all select 'keeps auto-delete after answering', case when pg_get_functiondef('public.platform_decide_request(uuid,text,text,integer,timestamptz,text)'::regprocedure) like '%_purge_requests%' then 'OK' else 'OLD VERSION' end
 union all select 'update invoice function exists', case when to_regprocedure('public.platform_update_invoice(uuid,jsonb)') is not null then 'OK' else 'MISSING' end;

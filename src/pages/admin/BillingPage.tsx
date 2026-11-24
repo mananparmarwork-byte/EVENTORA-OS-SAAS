@@ -4,8 +4,6 @@ import { AlertTriangle, Building2, CheckCircle2, Clock, Copy, Download, FileText
 import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Spinner, Switch, useUi } from '@/components/ui';
 import { UpiQr } from '@/components/UpiQr';
 import { useBranchInfo } from '@/lib/branch';
-import { MobileField, useMobile } from '@/components/MobileField';
-import { PHONE_ERROR, validPhone } from '@/lib/phone';
 import { useBillingQuote, useCreateRequest, useMyInvoices, useMyRequests, usePaymentInfo } from '@/lib/apiExt';
 import { useBusiness, usePlans, useSubscription } from '@/lib/api';
 import { cn, fmtDate, inr, todayISO } from '@/lib/format';
@@ -71,7 +69,6 @@ export function BillingPage() {
   const [period, setPeriod] = useState('');
   const [keep, setKeep] = useState(0);
   const [names, setNames] = useState<string[]>([]);
-  const [mobile, setMobile] = useMobile();
   const [reference, setReference] = useState('');
   const [paidOn, setPaidOn] = useState(todayISO());
   const [amount, setAmount] = useState('');
@@ -108,10 +105,9 @@ export function BillingPage() {
 
   const send = () => {
     if (!q) { toast(quote.error?.message ?? 'Choose what you want to pay for.', 'error'); return; }
-    if (!validPhone(mobile)) { toast(PHONE_ERROR, 'error'); return; }
     if (names.some((n) => n.trim().length < 2)) { toast('Enter a name for every new branch.', 'error'); return; }
     if (needsRef && reference.trim().length < 4) { toast('Enter the UPI transaction ID (UTR) so we can find your payment.', 'error'); return; }
-    create.mutate({ kind: 'renewal', payload: { contact: mobile.trim(), renew: effRenew, period: effRenew ? period : '', keep: effRenew ? keep : extras, newBranches: names.map((n) => ({ name: n.trim() })), reference: reference.trim(), amount: amount.trim() || String(total), paidOn } },
+    create.mutate({ kind: 'renewal', payload: { renew: effRenew, period: effRenew ? period : '', keep: effRenew ? keep : extras, newBranches: names.map((n) => ({ name: n.trim() })), reference: reference.trim(), amount: amount.trim() || String(total), paidOn } },
       { onSuccess: () => { toast('Request sent. We will check the payment and switch everything on.'); setReference(''); setNames([]); }, onError: (e) => toast(e.message, 'error') });
   };
 
@@ -216,7 +212,6 @@ export function BillingPage() {
 
             <div className="space-y-4 border-t border-border/70 pt-5">
               {pending.length > 0 && <p className="rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-xs text-warning">You already have {pending.length} request{pending.length === 1 ? '' : 's'} waiting for approval. Only send another if this is a different payment.</p>}
-              <MobileField value={mobile} onChange={setMobile} />
               <Field label="UPI transaction ID (UTR)" required={needsRef} hint="from your payment app"><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. 412833910075" /></Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Amount paid (₹)"><Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" /></Field>

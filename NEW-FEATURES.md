@@ -18,6 +18,19 @@ were moved to `_unused_earlier_files/razorpay-flow/` (the Razorpay SQL and Edge 
 4. Sign in as Super admin → **Settings** → fill in your WhatsApp, UPI ID, payee name, bank details and the extra-branch fee. These appear on every owner's Billing page and in reminders.
 5. Optional: `supabase/17-auto-messages-cron.sql` (needs the `pg_cron` extension) creates the automatic reminders every morning even if nobody opens the app.
 
+## 1b. Update 2: billing with UPI QR, monthly branch fee, automatic invoice
+Run **`supabase/18-billing-qr-invoices.sql`** (after file 16). Then in Super admin → **Settings** set **Extra branch fee (₹ per MONTH)** and fill in **Invoice details**.
+
+* **Owner → Billing**: choose *Renew / change plan*, *Keep my extra branches*, and/or *Add extra branches* (type each branch name). The page shows the exact total and a **UPI QR with that amount**.
+  Owner pays, enters the **UPI transaction ID (UTR)** and presses *Send request*.
+* **Branch fee is monthly, per branch** (the page says so). Active plan + new branch → pays *fee × months left in the plan*. Renewing → plan price + *fee × plan months* for each extra branch kept
+  (+ *fee × (months left + plan months)* for each new branch). Only the branch part is charged when the owner just adds a branch to a running plan. Everything is calculated by the database, not the browser.
+* **Super admin → Requests**: you see the breakdown, branch names and transaction ID. **Approve** → plan end date, branch slots and the new branches are set, an in-app message is sent and an **invoice is created automatically**.
+  Extra branches that were *not* paid again at renewal are switched off (bills and data are kept; newest branch goes first).
+* **Super admin → Invoices**: every invoice, with **Edit** (bill-to details, lines, notes, number, date, paid amount, **GST on/off and rate**, your own details) and **PDF download**. The owner also sees and downloads their invoices in Billing.
+* **GST is optional and off by default.** When you switch it on, GST is treated as *already included* in the price (so the amount the owner paid and the QR amount never change); the invoice shows taxable value + GST.
+* The Branches page no longer has a separate request form: *Add a paid branch* opens Billing.
+
 ## 2. What changed
 
 ### Manual access (replaces payments)

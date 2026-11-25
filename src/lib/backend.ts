@@ -3,8 +3,9 @@ import { cloneCatalog, DEFAULT_CATALOG } from './catalog';
 import { normalizeEventSlots, occupancyEntries } from './booking';
 import { computeTotals, lineTotal, quoteAdvance } from './pricing';
 import { newId } from './settings';
+import { makeSaasExt, unsupportedExt, type SaasExt } from './backendExt';
 import { localISODate } from './format';
-import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck, type PurchaseStatus, type NewPurchase, type PlatformDashboard, type SubRow, type TenantPayment, type CollectionRow, type CollectedPayment, type FollowUp, type ReminderResult } from './types';
+import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck, type PurchaseStatus, type PlatformDashboard, type SubRow, type TenantPayment, type CollectionRow, type CollectedPayment, type FollowUp, type FollowUpAction, type ReminderResult } from './types';
 
 /**
  * Every screen talks to the database ONLY through this interface.
@@ -15,7 +16,7 @@ import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quot
  */
 export type { Session };
 
-export interface Backend {
+export interface Backend extends SaasExt {
   mode: 'supabase' | 'api';
   getCatalog(): Promise<CatalogCategory[]>;
   saveCatalog(catalog: CatalogCategory[]): Promise<void>;
@@ -34,14 +35,10 @@ export interface Backend {
   /* ---- SaaS: signup, public page of a business, subscription, software-owner panel ---- */
   signUp(email: string, password: string): Promise<{ hasSession: boolean }>;
   createTenant(name: string, slug: string): Promise<string>;
-  /** Buy first (no account yet): starts the payment for this admin email and returns the payment page address. */
-  createPurchase(input: { email: string; period: BillingPeriod; coupon?: string; businessName?: string }): Promise<NewPurchase>;
   /** Has the payment arrived? `id` is the secret from the thank-you link; `email` is the fallback when the link was lost. */
   purchaseStatus(q: { id?: string; email?: string }): Promise<PurchaseStatus>;
   savePurchaseProfile(id: string, businessName: string): Promise<void>;
   getSubscription(): Promise<Subscription | null>;
-  startCheckout(period: BillingPeriod, coupon?: string): Promise<string>;
-  cancelAutopay(): Promise<void>;
   getPlans(): Promise<Plan[] | null>;
   checkCoupon(code: string, period: BillingPeriod | null): Promise<CouponCheck>;
   redeemCoupon(code: string): Promise<number>;
@@ -54,26 +51,29 @@ export interface Backend {
   platformGrantAccess(v: { tenantId: string; period: BillingPeriod | null; until: string; note: string; amountRupees: number }): Promise<void>;
   platformSetNote(tenantId: string, note: string): Promise<void>;
   platformTenantPayments(tenantId: string): Promise<TenantPayment[]>;
-  platformDeletePlan(period: BillingPeriod): Promise<void>;
+  /* ---- Super admin -> Collections ---- */
   platformCollections(): Promise<CollectionRow[]>;
   platformCollected(fromISO: string | null, toISO: string | null): Promise<CollectedPayment[]>;
-  platformRecordCollection(v: { tenantId: string; period: BillingPeriod | null; amountRupees: number; paidOn: string; method: string; note: string }): Promise<string>;
-  platformLogFollowup(v: { tenantId: string; action: 'email' | 'whatsapp' | 'copy' | 'call' | 'note'; note: string; promiseDate: string | null }): Promise<void>;
+  /** Records a payment you received and extends the plan. Returns the new end date. */
+  platformRecordCollection(v: { tenantId: string; period: string; amountRupees: number; paidOn: string; method: string; note: string }): Promise<string>;
+  platformLogFollowup(v: { tenantId: string; action: Exclude<FollowUpAction, 'collected'>; note: string; promiseDate: string | null }): Promise<void>;
   platformFollowups(tenantId: string): Promise<FollowUp[]>;
   platformSetPhone(tenantId: string, phone: string): Promise<void>;
   platformSendReminders(tenantIds: string[], note: string): Promise<ReminderResult>;
+  platformDeletePlan(period: BillingPeriod): Promise<void>;
   platformListCoupons(): Promise<Coupon[]>;
   platformSaveCoupon(c: Coupon): Promise<void>;
   listTenants(): Promise<TenantRow[]>;
   platformSetSubscription(tenantId: string, status: SubStatus | null, extendDays: number): Promise<void>;
   listStaff(): Promise<StaffMember[]>;
   setStaffActive(id: string, active: boolean): Promise<void>;
-  createStaff(email: string, password: string): Promise<void>;
+  createStaff(email: string, password: string, branchId?: string): Promise<void>;
   updateQuote(reference: string, input: QuoteInput): Promise<void>;
   updatePricing(reference: string, pricing: QuotePricing): Promise<void>;
   setStatus(reference: string, status: QuoteStatus): Promise<void>;
   deleteQuote(reference: string): Promise<void>;
-  bookedTimes(): Promise<Record<string, TimeRange[]>>;
+  /** Booked times of ONE branch (an employee always gets their own branch; the owner passes the branch of the bill). */
+  bookedTimes(branchId?: string): Promise<Record<string, TimeRange[]>>;
   getSettings(key: string): Promise<unknown | null>;
   saveSettings(key: string, data: unknown): Promise<void>;
   getSession(): Promise<Session>;
@@ -112,7 +112,7 @@ export class MfaRequiredError extends Error {
 type QuoteRow = {
   id: string; reference: string; customer_name: string; mobile: string; event_type: string; event_date: string;
   guests: number; customer_gst_number: string | null; hall: string; services: QuoteService[]; pricing: QuotePricing;
-  status: QuoteStatus; created_at: string;
+  status: QuoteStatus; created_at: string; branch_id?: string | null;
 };
 
 function fromRow(row: QuoteRow): Quote {
@@ -132,6 +132,7 @@ function fromRow(row: QuoteRow): Quote {
     },
     status: row.status,
     createdAt: row.created_at,
+    branchId: row.branch_id ?? undefined,
   };
 }
 
@@ -148,10 +149,10 @@ const toRow = (input: QuoteInput) => ({
   pricing: { ...input.pricing, eventDates: input.customer.eventDates ?? [input.customer.eventDate], eventSlots: input.customer.eventSlots ?? {} },
 });
 
-type ActivityRow = { id: string; at: string; actor_email: string | null; actor_role: string | null; action: ActivityEntry['action']; reference: string | null; title: string; detail: string | null; data: ActivityEntry['data'] | null };
+type ActivityRow = { branch_id?: string | null; id: string; at: string; actor_email: string | null; actor_role: string | null; action: ActivityEntry['action']; reference: string | null; title: string; detail: string | null; data: ActivityEntry['data'] | null };
 const fromActivityRow = (r: ActivityRow): ActivityEntry => ({
   id: r.id, at: r.at, actorEmail: r.actor_email ?? '', actorRole: (r.actor_role as ActivityEntry['actorRole']) ?? 'system', action: r.action,
-  reference: r.reference ?? '', title: r.title, detail: r.detail ?? '', data: r.data ?? {},
+  reference: r.reference ?? '', title: r.title, detail: r.detail ?? '', data: r.data ?? {}, branchId: r.branch_id ?? undefined,
 });
 
 const NOT_ALLOWED = 'The database did not allow this change. If your free trial or subscription has ended, renew it in Billing; otherwise run the latest SQL files.';
@@ -217,7 +218,7 @@ async function finishSignIn(client: SupabaseClient, email: string): Promise<NonN
     await client.auth.signOut();
     if (c.problem) throw new Error(`Signed in, but the database could not confirm your account: ${c.problem}. Run the latest SQL files.`);
     if (/confirm your email/i.test(claimed.claimError)) throw new Error(claimed.claimError);
-    throw new Error('This login has no business yet, or it was switched off. If you paid, sign in with the email you paid with. Employees: ask your owner. New here? Choose a plan first.');
+    throw new Error('This login has no business yet, or it was switched off. Eventora accounts are created by the Eventora team: contact us to get access. Employees: ask your owner.');
   }
   return { email, role: c.role, tenantId: c.tenantId, tenantName: c.tenantName, slug: c.slug, platform: c.platform };
 }
@@ -238,6 +239,7 @@ async function fnError(error: unknown): Promise<Error> {
 
 function makeSupabaseBackend(client: SupabaseClient): Backend {
   return {
+    ...makeSaasExt(client),
     mode: 'supabase',
     async getCatalog() {
       const { data, error } = await client.rpc('get_catalog');
@@ -262,7 +264,7 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       // Bills are created by a database function so the number is handed out safely (see supabase/setup.sql).
       const { reference: _r, ...row } = toRow(input);
       void _r;
-      const { data, error } = await client.rpc('create_quote', { p: row, p_reference: overrideRef?.trim() || null });
+      const { data, error } = await client.rpc('create_quote', { p: { ...row, branch_id: input.branchId ?? null }, p_reference: overrideRef?.trim() || null });
       if (error) throw new Error(error.code === '23505' ? 'This bill number already exists. Use a different bill number.' : error.message);
       return { ...input, reference: String(data), id: newId(), createdAt: new Date().toISOString(), status: 'new' };
     },
@@ -290,16 +292,16 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
     },
     canCreateStaff: true,
     async listStaff() {
-      const { data, error } = await client.from('members').select('user_id,email,active').eq('role', 'staff').order('email');
+      const { data, error } = await client.from('members').select('user_id,email,active,branch_id').eq('role', 'staff').order('email');
       if (error) throw error;
-      return (data as { user_id: string; email: string; active: boolean }[]).map((r) => ({ id: r.user_id, email: r.email, active: r.active }));
+      return (data as { user_id: string; email: string; active: boolean; branch_id?: string | null }[]).map((r) => ({ id: r.user_id, email: r.email, active: r.active, branchId: r.branch_id }));
     },
     async setStaffActive(id, active) {
       const { data, error } = await client.from('members').update({ active }).eq('user_id', id).select('user_id');
       if (error) throw error;
       if (!data || data.length === 0) throw new Error(NOT_ALLOWED);
     },
-    async createStaff(email, password) { await callStaffFn(client, { action: 'create', email, password }); },
+    async createStaff(email, password, branchId) { await callStaffFn(client, { action: 'create', email, password, branchId }); },
     async deleteStaff(id) { await callStaffFn(client, { action: 'delete', id }); },
     async resetStaffPassword(id, password) { await callStaffFn(client, { action: 'resetPassword', id, password }); },
     async signUp(email, password) {
@@ -312,14 +314,6 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       if (error) throw new Error(error.message);
       clearPending();
       return String(data);
-    },
-    async createPurchase({ email, period, coupon, businessName }) {
-      const { data, error } = await client.functions.invoke('create-purchase', { body: { email, period, coupon: coupon?.trim() || null, businessName: businessName?.trim() || null } });
-      if (error) throw await fnError(error);
-      const d = data as { purchaseId?: string; url?: string; amountPaise?: number; error?: string } | null;
-      if (d?.error) throw new Error(d.error);
-      if (!d?.purchaseId || !d.url) throw new Error('Could not start the payment.');
-      return { purchaseId: d.purchaseId, url: d.url, amount: (d.amountPaise ?? 0) / 100 };
     },
     async purchaseStatus({ id, email }) {
       const { data, error } = await client.rpc('purchase_status', { p_id: id ?? null, p_email: email ?? null });
@@ -334,10 +328,6 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
     async getSubscription() {
       const { data, error } = await client.rpc('get_subscription');
       return error || !data ? null : (data as Subscription);
-    },
-    async cancelAutopay() {
-      const { error } = await client.functions.invoke('manage-subscription', { body: { action: 'cancel' } });
-      if (error) throw await fnError(error);
     },
     async getPlans() {
       const { data, error } = await client.rpc('get_plans');
@@ -396,14 +386,18 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       if (error) throw new Error(error.message);
       return (data ?? []) as TenantPayment[];
     },
+    async platformUpsertPlan(p) {
+      const { error } = await client.rpc('platform_upsert_plan', { p_key: p.period, p_name: p.name, p_months: p.months, p_price_paise: Math.round(p.price * 100), p_description: p.description, p_features: p.features, p_popular: p.popular, p_active: p.active, p_sort: p.sort });
+      if (error) throw new Error(/platform_upsert_plan/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/14-custom-plans.sql in the Supabase SQL Editor first, then try again.' : error.message);
+    },
     async platformCollections() {
       const { data, error } = await client.rpc('platform_collections');
-      if (error) throw new Error(/platform_collections/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/16-collections.sql in the Supabase SQL Editor first, then refresh.' : error.message);
+      if (error) throw new Error(/platform_collections/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/19-collections.sql in the Supabase SQL Editor first, then refresh.' : error.message);
       return (data ?? []) as CollectionRow[];
     },
     async platformCollected(fromISO, toISO) {
       const { data, error } = await client.rpc('platform_collected_payments', { p_from: fromISO, p_to: toISO });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(/platform_collected_payments/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/19-collections.sql in the Supabase SQL Editor first, then refresh.' : error.message);
       return (data ?? []) as CollectedPayment[];
     },
     async platformRecordCollection(v) {
@@ -427,11 +421,9 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
     async platformSendReminders(tenantIds, note) {
       const { data, error } = await client.functions.invoke('send-payment-reminder', { body: { tenantIds, note } });
       if (error) throw await fnError(error);
-      return data as ReminderResult;
-    },
-    async platformUpsertPlan(p) {
-      const { error } = await client.rpc('platform_upsert_plan', { p_key: p.period, p_name: p.name, p_months: p.months, p_price_paise: Math.round(p.price * 100), p_description: p.description, p_features: p.features, p_popular: p.popular, p_active: p.active, p_sort: p.sort });
-      if (error) throw new Error(/platform_upsert_plan/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/14-custom-plans.sql in the Supabase SQL Editor first, then try again.' : error.message);
+      const d = data as (ReminderResult & { error?: string }) | null;
+      if (d?.error) throw new Error(d.error);
+      return { sent: d?.sent ?? 0, failed: d?.failed ?? 0, skipped: d?.skipped ?? [], errors: d?.errors ?? [] };
     },
     async platformDeletePlan(period) {
       const { error } = await client.rpc('platform_delete_plan', { p_key: period });
@@ -445,13 +437,6 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
     async platformSaveCoupon(c) {
       const { error } = await client.rpc('platform_save_coupon', { p_code: c.code, p_kind: c.kind, p_value: c.kind === 'amount' ? Math.round(c.value * 100) : Math.round(c.value), p_periods: c.periods && c.periods.length ? c.periods : null, p_max_uses: c.maxUses, p_valid_until: c.validUntil, p_active: c.active, p_note: c.note });
       if (error) throw new Error(error.message);
-    },
-    async startCheckout(period, coupon) {
-      const { data, error } = await client.functions.invoke('create-checkout', { body: { period, coupon: coupon?.trim() || null } });
-      if (error) throw await fnError(error);
-      const url = (data as { url?: string } | null)?.url;
-      if (!url) throw new Error('Could not start the payment.');
-      return url;
     },
     async listTenants() {
       const { data, error } = await client.rpc('platform_list_tenants');
@@ -483,8 +468,8 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       const { error } = await client.from('quotes').delete().eq('reference', reference);
       if (error) throw error;
     },
-    async bookedTimes() {
-      const { data, error } = await client.rpc('booked_times');
+    async bookedTimes(branchId) {
+      const { data, error } = await client.rpc('booked_times', { p_branch: branchId ?? null });
       if (error) throw error;
       const map: Record<string, TimeRange[]> = {};
       ((data ?? []) as { booked_date: string; start_time: string; end_time: string }[]).forEach((r) => {
@@ -636,6 +621,7 @@ function makeHttpBackend(apiUrl: string): Backend {
   }
 
   return {
+    ...unsupportedExt,
     mode: 'api',
     async getCatalog() { const r = await call<{ categories: CatalogCategory[] | null }>('catalog.get'); return r.categories && r.categories.length ? r.categories : cloneCatalog(); },
     async saveCatalog(catalog) { await call('catalog.save', { categories: catalog }); },
@@ -650,12 +636,9 @@ function makeHttpBackend(apiUrl: string): Backend {
     canCreateStaff: true,
     async signUp() { throw new Error('Signup needs the Supabase version of Eventora.'); },
     async createTenant() { throw new Error('Multiple businesses need the Supabase version of Eventora.'); },
-    async createPurchase() { throw new Error('Buying a plan needs the Supabase version of Eventora.'); },
     async purchaseStatus() { return { found: false }; },
     async savePurchaseProfile() { /* not available on Hostinger */ },
     async getSubscription() { return null; },
-    async startCheckout() { throw new Error('Subscriptions need the Supabase version of Eventora.'); },
-    async cancelAutopay() { throw new Error('Not available on Hostinger.'); },
     async getPlans() { return null; },
     async checkCoupon() { return { ok: false, error: 'Not available on Hostinger.' }; },
     async redeemCoupon() { throw new Error('Not available on Hostinger.'); },

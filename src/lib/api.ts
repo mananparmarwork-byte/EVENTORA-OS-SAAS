@@ -1,11 +1,12 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getBackend } from './backend';
+import { ALL, useBranchScope } from './branch';
 import { cleanBusiness, cleanPayment } from './settings';
 import { cloneCatalog } from './catalog';
 import { FALLBACK_PLANS } from './plans';
 import { billDeleted, billUpdated, statusChanged } from './activity';
-import { DEFAULT_ACTIVITY_SETTINGS, DEFAULT_NUMBERING, DEFAULT_PERMISSIONS, type ActivityDraft, type ActivityEntry, type ActivitySettings, type BusinessProfile, type CatalogCategory, type NumberingSettings, type PaymentSettings, type Quote, type QuoteInput, type QuotePricing, type QuoteStatus, type Session, type StaffMember, type StaffPermissions, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type PurchaseStatus, type PlatformDashboard, type SubRow, type TenantPayment, type CollectionRow, type CollectedPayment, type FollowUp } from './types';
+import { DEFAULT_ACTIVITY_SETTINGS, DEFAULT_NUMBERING, DEFAULT_PERMISSIONS, type ActivityDraft, type ActivityEntry, type ActivitySettings, type BusinessProfile, type CatalogCategory, type NumberingSettings, type PaymentSettings, type Quote, type QuoteInput, type QuotePricing, type QuoteStatus, type Session, type StaffMember, type StaffPermissions, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type PurchaseStatus, type PlatformDashboard, type SubRow, type TenantPayment, type CollectionRow, type CollectedPayment, type FollowUp, type FollowUpAction } from './types';
 
 const BUSINESS_FALLBACK = cleanBusiness(null);
 const PAYMENT_FALLBACK = cleanPayment(null);
@@ -38,8 +39,16 @@ export function useSaveCatalog() {
 }
 export const defaultCatalog = () => cloneCatalog();
 
-export function useQuotes() {
-  return useQuery<Quote[]>({ queryKey: keys.quotes, queryFn: () => be().listQuotes(), refetchOnWindowFocus: true });
+/**
+ * The bills the owner is looking at. When the owner has chosen ONE branch in the branch switcher, only that branch's bills come back,
+ * so every screen built on this (Overview, Reports, Calendar, Bills, Activity) follows the switcher automatically.
+ * `{ all: true }` ignores the switcher (used for the branch comparison and for clash checks).
+ */
+export function useQuotes(opts?: { all?: boolean }) {
+  const { scope } = useBranchScope();
+  const wanted = opts?.all ? ALL : scope;
+  const select = useCallback((list: Quote[]) => (wanted === ALL ? list : list.filter((q) => q.branchId === wanted)), [wanted]);
+  return useQuery<Quote[], Error, Quote[]>({ queryKey: keys.quotes, queryFn: () => be().listQuotes(), refetchOnWindowFocus: true, select });
 }
 export function useQuote(reference: string, enabled = true) {
   return useQuery<Quote | null>({ queryKey: keys.quote(reference), queryFn: () => be().getQuote(reference), enabled: enabled && Boolean(reference) });
@@ -110,7 +119,9 @@ export function useDeleteQuote() {
 export function useLogActivity() { return useLogger(); }
 
 export function useActivity(enabled: boolean) {
-  return useQuery<ActivityEntry[]>({ queryKey: keys.activity, queryFn: () => be().listActivity(), enabled, refetchOnWindowFocus: true, retry: false });
+  const { scope } = useBranchScope(enabled);
+  const select = useCallback((list: ActivityEntry[]) => (scope === ALL ? list : list.filter((a) => a.branchId === scope)), [scope]);
+  return useQuery<ActivityEntry[], Error, ActivityEntry[]>({ queryKey: keys.activity, queryFn: () => be().listActivity(), enabled, refetchOnWindowFocus: true, retry: false, select });
 }
 export function usePurgeActivity() {
   const qc = useQueryClient();
@@ -134,7 +145,7 @@ export function useStaffActions() {
   const refresh = () => { void qc.invalidateQueries({ queryKey: keys.staff }); };
   return {
     setActive: useMutation({ mutationFn: (v: { id: string; active: boolean }) => be().setStaffActive(v.id, v.active), onSuccess: refresh }),
-    create: useMutation({ mutationFn: (v: { email: string; password: string }) => be().createStaff(v.email, v.password), onSuccess: refresh }),
+    create: useMutation({ mutationFn: (v: { email: string; password: string; branchId?: string }) => be().createStaff(v.email, v.password, v.branchId), onSuccess: refresh }),
     remove: useMutation({ mutationFn: (id: string) => { const f = be().deleteStaff; if (!f) throw new Error('Deleting employees is not available on this database.'); return f.call(be(), id); }, onSuccess: refresh }),
     resetPassword: useMutation({ mutationFn: (v: { id: string; password: string }) => { const f = be().resetStaffPassword; if (!f) throw new Error('Password reset is not available on this database.'); return f.call(be(), v.id, v.password); } }),
   };
@@ -149,8 +160,9 @@ export const accountApi = () => {
 };
 export const verifyMfa = (factorId: string, code: string) => { const b = be(); if (!b.verifyMfa) throw new Error('Two-step verification is not available.'); return b.verifyMfa(factorId, code); };
 
-export function useBookedTimes() {
-  return useQuery({ queryKey: keys.booked, queryFn: () => be().bookedTimes(), staleTime: 20_000, refetchOnWindowFocus: true, retry: false });
+/** Booked times of one branch (employees always get their own branch from the database). */
+export function useBookedTimes(branchId?: string) {
+  return useQuery({ queryKey: [...keys.booked, branchId ?? ''], queryFn: () => be().bookedTimes(branchId), staleTime: 20_000, refetchOnWindowFocus: true, retry: false });
 }
 
 export function useBusiness() {
@@ -207,7 +219,6 @@ export const backendMode = () => be().mode;
 /* ------------------------------------------------------------------ SaaS --- */
 export const signUp = (email: string, password: string) => be().signUp(email, password);
 export const createTenant = (name: string, slug: string) => be().createTenant(name, slug);
-export const createPurchase = (input: { email: string; period: BillingPeriod; coupon?: string; businessName?: string }) => be().createPurchase(input);
 export const purchaseStatus = (q: { id?: string; email?: string }) => be().purchaseStatus(q);
 export const savePurchaseProfile = (id: string, businessName: string) => be().savePurchaseProfile(id, businessName);
 /** Polls while the payment is still on its way. */
@@ -220,8 +231,6 @@ export function usePurchaseStatus(q: { id?: string; email?: string }, enabled = 
     refetchInterval: (query) => (query.state.data?.found && query.state.data.status === 'pending' ? 4000 : false),
   });
 }
-export const startCheckout = (period: BillingPeriod, coupon?: string) => be().startCheckout(period, coupon);
-export const cancelAutopay = () => be().cancelAutopay();
 export const checkCoupon = (code: string, period: BillingPeriod | null) => be().checkCoupon(code, period);
 export const redeemCoupon = (code: string) => be().redeemCoupon(code);
 
@@ -248,32 +257,33 @@ export function useTenantPayments(tenantId: string | null) {
 function refreshPlatform(qc: ReturnType<typeof useQueryClient>) {
   for (const k of [keys.tenants, ['platform-dashboard'], ['platform-subs'], ['platform-payments'], ['platform-collections'], ['platform-collected'], ['platform-followups']]) void qc.invalidateQueries({ queryKey: k });
 }
-/* ---- Super admin -> Collections ---- */
-export function useCollections() {
-  return useQuery<CollectionRow[]>({ queryKey: ['platform-collections'], queryFn: () => be().platformCollections(), retry: false, staleTime: 30_000 });
-}
-export function useCollected(fromISO: string | null, toISO: string | null, enabled = true) {
-  return useQuery<CollectedPayment[]>({ queryKey: ['platform-collected', fromISO, toISO], queryFn: () => be().platformCollected(fromISO, toISO), enabled, retry: false, staleTime: 30_000 });
-}
-export function useFollowups(tenantId: string | null) {
-  return useQuery<FollowUp[]>({ queryKey: ['platform-followups', tenantId], queryFn: () => be().platformFollowups(tenantId!), enabled: !!tenantId, retry: false });
-}
-export function useCollectionActions() {
-  const qc = useQueryClient();
-  const done = () => refreshPlatform(qc);
-  return {
-    record: useMutation({ mutationFn: (v: { tenantId: string; period: BillingPeriod | null; amountRupees: number; paidOn: string; method: string; note: string }) => be().platformRecordCollection(v), onSuccess: done }),
-    log: useMutation({ mutationFn: (v: { tenantId: string; action: 'email' | 'whatsapp' | 'copy' | 'call' | 'note'; note: string; promiseDate: string | null }) => be().platformLogFollowup(v), onSuccess: done }),
-    setPhone: useMutation({ mutationFn: (v: { tenantId: string; phone: string }) => be().platformSetPhone(v.tenantId, v.phone), onSuccess: done }),
-    sendEmails: useMutation({ mutationFn: (v: { tenantIds: string[]; note: string }) => be().platformSendReminders(v.tenantIds, v.note), onSuccess: done }),
-  };
-}
 export function useSetTenantSubscription() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { tenantId: string; status: SubStatus | null; extendDays: number }) => be().platformSetSubscription(v.tenantId, v.status, v.extendDays),
     onSuccess: () => refreshPlatform(qc),
   });
+}
+
+/* ---- Super admin -> Collections ---- */
+export function useCollections() {
+  return useQuery<CollectionRow[]>({ queryKey: ['platform-collections'], queryFn: () => be().platformCollections(), retry: false, refetchOnWindowFocus: true });
+}
+export function useCollected(fromISO: string | null, toISO: string | null, enabled = true) {
+  return useQuery<CollectedPayment[]>({ queryKey: ['platform-collected', fromISO, toISO], queryFn: () => be().platformCollected(fromISO, toISO), enabled, retry: false });
+}
+export function useFollowups(tenantId: string | null) {
+  return useQuery<FollowUp[]>({ queryKey: ['platform-followups', tenantId], queryFn: () => be().platformFollowups(tenantId!), enabled: !!tenantId, retry: false });
+}
+export function useCollectionActions() {
+  const qc = useQueryClient();
+  const refresh = () => refreshPlatform(qc);
+  return {
+    record: useMutation({ mutationFn: (v: { tenantId: string; period: string; amountRupees: number; paidOn: string; method: string; note: string }) => be().platformRecordCollection(v), onSuccess: refresh }),
+    log: useMutation({ mutationFn: (v: { tenantId: string; action: Exclude<FollowUpAction, 'collected'>; note?: string; promiseDate?: string | null }) => be().platformLogFollowup({ tenantId: v.tenantId, action: v.action, note: v.note ?? '', promiseDate: v.promiseDate ?? null }), onSuccess: refresh }),
+    setPhone: useMutation({ mutationFn: (v: { tenantId: string; phone: string }) => be().platformSetPhone(v.tenantId, v.phone), onSuccess: refresh }),
+    sendEmails: useMutation({ mutationFn: (v: { tenantIds: string[]; note: string }) => be().platformSendReminders(v.tenantIds, v.note), onSuccess: refresh }),
+  };
 }
 
 /** The prices shown on the website and Billing page (managed in the "All businesses" panel). Falls back to the defaults in plans.ts. */
@@ -290,7 +300,7 @@ export function usePlans() {
 export function useSubscriptionAdmin() {
   const qc = useQueryClient();
   const refresh = () => { void qc.invalidateQueries({ queryKey: keys.subscription }); };
-  return { cancelAutopay: useMutation({ mutationFn: () => be().cancelAutopay(), onSuccess: refresh }), redeem: useMutation({ mutationFn: (code: string) => be().redeemCoupon(code), onSuccess: refresh }) };
+  return { redeem: useMutation({ mutationFn: (code: string) => be().redeemCoupon(code), onSuccess: refresh }) };
 }
 
 /* ---- software-owner panel ---- */

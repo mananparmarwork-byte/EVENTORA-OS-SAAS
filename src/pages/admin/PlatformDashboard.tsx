@@ -3,14 +3,15 @@ import { AlertTriangle, CalendarClock, Copy, Download, KeyRound, Loader2, Refres
 import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, Spinner, Textarea, useUi } from '@/components/ui';
 import { usePlans, usePlatformActions, usePlatformDashboard, useSetTenantSubscription, useSubscriptionOverview, useTenantPayments } from '@/lib/api';
 import { cn, fmtDate, inr } from '@/lib/format';
+import { OwnerTools } from '@/pages/admin/PlatformOwnerTools';
 import type { SubRow, SubState } from '@/lib/types';
 
 type Tone = 'success' | 'gold' | 'warning' | 'error' | 'neutral';
 export const STATE: Record<SubState, { label: string; short: string; tone: Tone; help: string }> = {
-  renewing: { label: 'Renewing (autopay on)', short: 'Renewing', tone: 'success', help: 'Paid, and Razorpay will charge them again by itself.' },
-  manual_renew: { label: 'Paid, must renew by hand', short: 'Manual renew', tone: 'gold', help: 'Paid, but autopay is off. They must pay again before the end date.' },
-  cancelling: { label: 'Cancelled, ends soon', short: 'Cancelling', tone: 'warning', help: 'Stopped autopay. Still has access until the end date, then will not renew.' },
-  past_due: { label: 'Payment failed', short: 'Payment failed', tone: 'error', help: 'The last autopay charge failed. Razorpay retries for a few days.' },
+  renewing: { label: 'Renewing (older account)', short: 'Renewing', tone: 'success', help: 'An older account that was set to renew by itself. New payments are recorded by you with Collect.' },
+  manual_renew: { label: 'Paid, renews by hand', short: 'Manual renew', tone: 'gold', help: 'Paid. They must pay again before the end date (you can send a reminder).' },
+  cancelling: { label: 'Cancelled, ends soon', short: 'Cancelling', tone: 'warning', help: 'Cancelled an older automatic renewal. Still has access until the end date, then will not renew.' },
+  past_due: { label: 'Payment failed', short: 'Payment failed', tone: 'error', help: 'An older automatic payment failed. Ask them to pay you directly, then record it with Collect.' },
   lapsed: { label: "Didn't renew", short: "Didn't renew", tone: 'error', help: 'Paid before, but the plan ended and they did not renew.' },
   trial: { label: 'On free trial', short: 'On trial', tone: 'gold', help: 'Trying the software for free.' },
   trial_ended: { label: 'Expired, never paid', short: 'Never paid', tone: 'neutral', help: 'Trial ended (or access removed) and they never paid.' },
@@ -150,7 +151,7 @@ export function DashboardTab({ onGo }: { onGo: (filter: SubState | 'all' | 'atte
 
       <Card>
         <CardHeader title="Latest payments" />
-        {d.recentPayments.length === 0 ? <EmptyState icon={<TrendingUp size={20} />} title="No payments yet" text="Payments from Razorpay (and ones you record yourself) show here." /> : (
+        {d.recentPayments.length === 0 ? <EmptyState icon={<TrendingUp size={20} />} title="No payments yet" text="Payments you record with Collect appear here." /> : (
           <ul className="divide-y divide-border/60">
             {d.recentPayments.map((p, i) => (
               <li key={i} className="flex items-center justify-between gap-3 px-5 py-3">
@@ -300,16 +301,18 @@ function ManageModal({ row, onClose }: { row: SubRow; onClose: () => void }) {
           </dl>
         </div>
 
+        <OwnerTools row={row} />
+
         <section className="space-y-4">
           <div><h3 className="font-semibold text-text">Give access</h3><p className="text-xs text-text-secondary">Choose a plan and an end date. They can use the software right away until that date.</p></div>
-          {row.autopay && <p className="rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-xs text-warning">Autopay is on for this customer, so Razorpay will still charge them on its own schedule.</p>}
+          {row.autopay && <p className="rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-xs text-warning">This is an older account that was set to renew by itself, so an automatic charge may still happen.</p>}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Plan" hint="shown to them"><Select value={period} onChange={(e) => setPeriod(e.target.value)}><option value="">Keep current ({row.planName ?? 'none'})</option>{plans.map((p) => <option key={p.period} value={p.period}>{p.name}{p.active ? '' : ' (off)'}</option>)}</Select></Field>
             <Field label="Access until" required><Input type="date" value={until} min={dateInput(addDays(new Date(), 1))} onChange={(e) => setUntil(e.target.value)} /></Field>
           </div>
           <div className="flex flex-wrap gap-2">{[30, 90, 180, 365].map((n) => <button key={n} type="button" onClick={() => setUntil(dateInput(addDays(running, n)))} className="rounded-full border border-border px-3 py-1 text-xs text-text-secondary hover:text-text">+{n === 365 ? '1 year' : `${n} days`}</button>)}</div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {([['free', 'Free access', 'You are giving it for free'], ['paid', 'Paid outside Razorpay', 'Cash, UPI or bank transfer']] as const).map(([k, t, s]) => (
+            {([['free', 'Free access', 'You are giving it for free'], ['paid', 'They paid me', 'Cash, UPI or bank transfer']] as const).map(([k, t, s]) => (
               <button key={k} type="button" onClick={() => setKind(k)} className={cn('rounded-xl border p-3 text-left transition-colors', kind === k ? 'border-gold bg-gold/10' : 'border-border hover:border-gold/50')}><p className="text-sm font-medium text-text">{t}</p><p className="text-xs text-text-secondary">{s}</p></button>
             ))}
           </div>

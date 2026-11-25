@@ -1,28 +1,13 @@
-# Super admin → Collections (setup)
+# Collections (Super admin) — set-up
 
-New tab **Collections** in the Super admin panel (next to Dashboard).
+Super admin → **Collections** shows who has to pay you, when, and what you have collected. Payments you record with **Collect** appear here.
 
-## What it does
-- **Pending** – ended / payment failed / trial over and never paid, with the amount due.
-- **Due in 7 days** and **Upcoming (8–30 days)** – manual-pay customers about to expire. **Autopay due** is shown separately (Razorpay charges these itself).
-- **Collected** – every payment received (Razorpay + ones you record), filter by this month / last month / last 30 days / all time / custom dates.
-- **Days left**, last payment, number of reminders sent, and "promised to pay on" date for every customer.
-- **Reminders** – Email (one click, or many at once), WhatsApp (opens a ready message), Copy text. Each one is logged.
-- **Collect** – you received cash/UPI/bank money: records it in your revenue AND extends the plan by the plan length.
-- **History** – log calls/notes, save the customer's WhatsApp number, set a promised date.
-- **Sequence** – order by days left, amount, plan, name, last payment, reminders sent, promised date; flip high/low; group by plan, status or due period; filter by plan.
-- **Export for Excel** – CSV of the current view (or only the ticked rows).
+1. **SQL** — Supabase → SQL Editor → run `supabase/19-collections.sql` (after 18). Every line of the final result must say **OK**.
+   (Numbered 19 because files 16, 17 and 18 already exist in this project.)
+2. **E-mail reminders (optional)** — `supabase functions deploy send-payment-reminder` (keep JWT verification ON).
+   Secrets, same as `send-reminders`: `RESEND_API_KEY`, `REMINDER_FROM`, `APP_URL`.
+   Without it, WhatsApp and Copy reminders still work.
+3. **Rebuild and publish** the website (`npm run build`, or push to GitHub).
 
-## Setup (3 steps, once)
-1. Supabase → SQL Editor → run `supabase/16-collections.sql` (after 15). Every line of the check must say OK.
-2. Deploy the email function (only needed for the Email buttons):
-   `supabase functions deploy send-payment-reminder`
-   It uses the same secrets as `send-reminders`: `RESEND_API_KEY`, `REMINDER_FROM`, `APP_URL`. Keep JWT verification ON.
-3. Rebuild / redeploy the website.
-
-WhatsApp and Copy work without step 2.
-
-## Notes
-- Amount due = the customer's current plan price (falls back to their last payment).
-- "Collect" starts the new period from today, or from the current end date if the plan is still running.
-- Not available on the Hostinger backend (same as the rest of Super admin).
+How to use: pick a tab (Pending, Due in 7 days, Upcoming, Autopay due, Collected, All customers), order/group the list, send reminders (single or ticked rows),
+and press **Collect** when a customer pays you by UPI, cash or bank transfer. The plan end date moves forward automatically. **Export for Excel** downloads the current view.

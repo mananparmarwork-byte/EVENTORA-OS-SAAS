@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { ArrowLeft, Check, ChevronRight, Copy, Download, Loader2, LogIn, MessageCircle, Minus, Plus, RotateCcw, Save, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Bookmark, Check, ChevronRight, Copy, Download, Loader2, LogIn, MessageCircle, Minus, Plus, RotateCcw, Save, ShieldCheck, Trash2, X } from 'lucide-react';
 import { Brand } from '@/components/Logo';
 import { Button, Card, Field, Input, Select, Spinner, Switch, useUi } from '@/components/ui';
 import { DatePicker } from '@/components/DatePicker';
@@ -8,8 +8,10 @@ import { useBookedTimes, useBusiness, useCatalog, useCreateQuote, useNextBillNum
 import { hasAnySlots, isRangeComplete, isRangeValid, normalizeEventSlots, normalizeRange, occupancyEntries, rangesOverlap, rangesText, scheduleLines } from '@/lib/booking';
 import { cn, formatEventDates, inr, localISODate, num, parseEventDates } from '@/lib/format';
 import { computeTotals, discountLabel, lineTotal, quoteAdvance, quoteDates } from '@/lib/pricing';
-import { whatsappLink } from '@/lib/settings';
-import type { CatalogCategory, CatalogItem, EventSlots, Quote, QuoteInput, TimeRange } from '@/lib/types';
+import { newId, whatsappLink } from '@/lib/settings';
+import { usePresets, useSavePresets } from '@/lib/apiExt';
+import { useBranchScope, ALL } from '@/lib/branch';
+import type { CatalogCategory, CatalogItem, EventSlots, PricingType, Quote, QuoteInput, TimeRange } from '@/lib/types';
 import { billFileName, buildBillBlob, saveBlob } from '@/pdf/generate';
 
 const EVENT_TYPES = ['Wedding', 'Reception', 'Engagement', 'Birthday', 'Anniversary', 'Corporate', 'Other'];
@@ -22,7 +24,13 @@ type Errors = Partial<Record<keyof Details, string>>;
 type Draft = {
   details: Details; selections: Record<string, number>; gstEnabled: boolean; gstRate: number; gstVisible: boolean; custGstVisible: boolean;
   slots: EventSlots; showCostPerGuest: boolean; discountEnabled: boolean; discountPercent: string; discountFlat: string; advancePaid: boolean; advanceAmount: string;
+  customItems?: CatalogItem[]; priceOverrides?: Record<string, number>;
 };
+
+/** The tab where one-off "custom items" live (default category id is 'other', named "Other Services"). */
+const isOtherCat = (c: CatalogCategory) => c.id === 'other' || /other/i.test(c.name);
+const CUSTOM_SUB = 'custom-items';
+const TYPE_LABEL: Record<PricingType, string> = { fixed: 'Fixed price', perUnit: 'Per unit (quantity)', perPerson: 'Per guest' };
 
 const eventTypeLabel = (d: Details) => (d.eventType === 'Other' ? d.otherEventType.trim() || 'Other' : d.eventType);
 
@@ -35,7 +43,6 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
   const { business } = useBusiness();
   const { payment } = usePayment();
   const catalogQuery = useCatalog();
-  const bookedQuery = useBookedTimes();
   const nextBill = useNextBillNumber(Boolean(session) && !editRef);
   const createQuote = useCreateQuote();
   const updateQuote = useUpdateQuote();
@@ -62,6 +69,19 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
   const [editQuote, setEditQuote] = useState<Quote | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [customItems, setCustomItems] = useState<CatalogItem[]>([]);
+  const [cName, setCName] = useState('');
+  const [cPrice, setCPrice] = useState('');
+  const [cType, setCType] = useState<PricingType>('fixed');
+  const [cSave, setCSave] = useState(true);
+  const [branchPick, setBranchPick] = useState('');
+  const presetsQuery = usePresets(Boolean(session));
+  const savePresets = useSavePresets();
+  const presets = presetsQuery.data ?? [];
+  const { branches, activeBranches, multi, main, scope, isStaff } = useBranchScope(Boolean(session));
+  /* the branch this bill belongs to: owner picks (default: the branch being viewed, else Main); an employee's branch is set by the database */
+  const branchId = editQuote?.branchId ?? (branchPick || (scope !== ALL ? scope : main?.id));
+  const bookedQuery = useBookedTimes(isStaff ? undefined : branchId);
   const summaryRef = useRef<HTMLDivElement>(null);
 
   /* ---- draft handling: a new quote is remembered on this device; an edit never touches it ---- */
@@ -83,6 +103,8 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
         if (typeof d.discountFlat === 'string') setDiscountFlat(d.discountFlat);
         if (typeof d.advancePaid === 'boolean') setAdvancePaid(d.advancePaid);
         if (typeof d.advanceAmount === 'string') setAdvanceAmount(d.advanceAmount);
+        if (Array.isArray(d.customItems)) setCustomItems(d.customItems.filter((i) => i && typeof i.id === 'string' && i.id.startsWith('custom-')));
+        if (d.priceOverrides && typeof d.priceOverrides === 'object') setPriceOverrides(d.priceOverrides);
       }
     } catch { try { window.localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } }
     setHydrated(true);
@@ -91,10 +113,10 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
   useEffect(() => {
     if (!hydrated || editing || saved) return;
     try {
-      const draft: Draft = { details, selections, gstEnabled, gstRate, gstVisible, custGstVisible, slots, showCostPerGuest, discountEnabled, discountPercent, discountFlat, advancePaid, advanceAmount };
+      const draft: Draft = { details, selections, gstEnabled, gstRate, gstVisible, custGstVisible, slots, showCostPerGuest, discountEnabled, discountPercent, discountFlat, advancePaid, advanceAmount, customItems, priceOverrides };
       window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch { /* storage blocked: the form still works */ }
-  }, [details, selections, gstEnabled, gstRate, gstVisible, custGstVisible, slots, showCostPerGuest, discountEnabled, discountPercent, discountFlat, advancePaid, advanceAmount, hydrated, editing, saved]);
+  }, [details, selections, gstEnabled, gstRate, gstVisible, custGstVisible, slots, showCostPerGuest, discountEnabled, discountPercent, discountFlat, advancePaid, advanceAmount, customItems, priceOverrides, hydrated, editing, saved]);
 
   /* ---- bill number: filled in automatically (read-only for employees). The owner may type their own. ---- */
   const autoNumber = nextBill.data ?? '';
@@ -126,7 +148,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
   }, [editQuery.data, editQuote]);
 
   /* ---- catalog (+ services saved on an old bill that are no longer in the catalog) ---- */
-  const catalog = useMemo<CatalogCategory[]>(() => {
+  const catalogBase = useMemo<CatalogCategory[]>(() => {
     const base = catalogQuery.data ?? [];
     if (!editQuote) return base;
     const known = new Set(base.flatMap((c) => c.subcategories.flatMap((s) => s.items.map((i) => i.id))));
@@ -135,6 +157,13 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
     const items: CatalogItem[] = missing.map((s) => ({ id: s.id, name: s.name, description: s.description ?? '', categoryId: base.find((c) => c.name === s.category)?.id ?? 'on-this-bill', subcategoryId: 'on-this-bill', price: s.unitPrice, pricingType: s.pricingType, active: true, minQuantity: 1, maxQuantity: 999 }));
     return [...base, { id: 'on-this-bill', name: 'On this bill', description: 'Saved on this bill but no longer in the catalog.', subcategories: [{ id: 'on-this-bill', name: 'Saved services', items }] }];
   }, [catalogQuery.data, editQuote]);
+
+  /* custom items live in a "Custom items" group inside the Other Services tab, so totals, bill and PDF treat them like any service */
+  const otherCat = catalogBase.find(isOtherCat) ?? catalogBase[catalogBase.length - 1];
+  const catalog = useMemo<CatalogCategory[]>(() => {
+    if (!customItems.length || !otherCat) return catalogBase;
+    return catalogBase.map((c) => (c.id === otherCat.id ? { ...c, subcategories: [...c.subcategories, { id: CUSTOM_SUB, name: 'Custom items', items: customItems.map((i) => ({ ...i, categoryId: c.id })) }] } : c));
+  }, [catalogBase, customItems, otherCat]);
 
   useEffect(() => { if (!activeCat && catalog.length) setActiveCat(catalog[0].id); }, [catalog, activeCat]);
 
@@ -204,6 +233,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
   const buildInput = (): QuoteInput => ({
     reference: ownerOverride || shownNumber.trim() || 'Assigned on save',
     customer: { name: details.name.trim(), mobile: details.mobile.trim(), eventType: eventTypeLabel(details), eventDate: dates[0] ?? '', eventDates: dates, eventSlots: slotsForDates, guests, gstNumber: details.customerGstNumber.trim(), hall: business.name },
+    branchId: isStaff ? undefined : branchId,
     services: lines.map((l) => ({ id: l.id, name: l.name, category: l.categoryName, subcategory: l.subcategoryName, pricingType: l.pricingType, quantity: l.quantity, unitPrice: l.price, total: l.total, description: l.description })),
     pricing: {
       foodPerPlate: totals.foodPerPlate, subtotal: totals.subtotal, gstEnabled, gstRate, gstAmount: totals.gstAmount, gstNumber: business.gstin, gstNumberVisible: gstVisible, customerGstNumberVisible: custGstVisible,
@@ -257,9 +287,30 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
 
   const sendWhatsApp = () => { const w = window.open(whatsappLink(details.mobile, message()), '_blank'); if (!w) window.location.assign(whatsappLink(details.mobile, message())); };
   const copy = async () => { try { await navigator.clipboard.writeText(message()); toast('Quotation text copied.'); } catch { toast('Copy is blocked in this browser.', 'error'); } };
-  const reset = async () => { if (!(await confirm({ title: 'Reset this quotation?', text: 'All details and selections will be cleared.', confirmLabel: 'Reset', danger: true }))) return; setDetails(INITIAL); setSelections({}); setSlots({}); setDiscountEnabled(false); setDiscountPercent(''); setDiscountFlat(''); setAdvancePaid(false); setAdvanceAmount(''); setErrors({}); setSaved(null); };
+  const reset = async () => { if (!(await confirm({ title: 'Reset this quotation?', text: 'All details and selections will be cleared.', confirmLabel: 'Reset', danger: true }))) return; setDetails(INITIAL); setCustomItems([]); setPriceOverrides({}); setSelections({}); setSlots({}); setDiscountEnabled(false); setDiscountPercent(''); setDiscountFlat(''); setAdvancePaid(false); setAdvanceAmount(''); setErrors({}); setSaved(null); };
 
   const toggleItem = (item: CatalogItem, on: boolean) => setSelections((s) => { const n = { ...s }; if (on) n[item.id] = item.pricingType === 'perUnit' ? item.minQuantity : 1; else delete n[item.id]; return n; });
+  const addCustomItem = (name: string, price: number, pricingType: PricingType) => {
+    if (!otherCat) { toast('Add at least one category in the Catalog first.', 'error'); return; }
+    const id = `custom-${newId()}`;
+    setCustomItems((c) => [...c, { id, name, description: 'Custom item', categoryId: otherCat.id, subcategoryId: CUSTOM_SUB, price, pricingType, active: true, minQuantity: 1, maxQuantity: 999 }]);
+    setSelections((s) => ({ ...s, [id]: 1 }));
+    setActiveCat(otherCat.id);
+  };
+  const submitCustom = () => {
+    const name = cName.trim(); const price = Number(cPrice);
+    if (!name) { toast('Enter the item name.', 'error'); return; }
+    if (!Number.isFinite(price) || price < 0 || cPrice.trim() === '') { toast('Enter the cost (0 or more).', 'error'); return; }
+    addCustomItem(name, price, cType);
+    if (cSave) {
+      const existing = presets.find((p) => p.name.toLowerCase() === name.toLowerCase());
+      const next = existing ? presets.map((p) => (p.id === existing.id ? { ...p, price, pricingType: cType } : p)) : [...presets, { id: newId(), name, price, pricingType: cType }];
+      savePresets.mutate(next, { onSuccess: () => toast(existing ? `“${name}” updated in your saved items.` : `“${name}” saved for next time.`), onError: (e) => toast(`Added to this quote, but not saved: ${e.message}`, 'error') });
+    }
+    setCName(''); setCPrice('');
+  };
+  const removeCustom = (id: string) => { setCustomItems((c) => c.filter((i) => i.id !== id)); setSelections((s) => { const n = { ...s }; delete n[id]; return n; }); setPriceOverrides((p) => { const n = { ...p }; delete n[id]; return n; }); };
+  const deletePreset = (id: string) => savePresets.mutate(presets.filter((p) => p.id !== id), { onError: (e) => toast(e.message, 'error') });
   const setQty = (item: CatalogItem, q: number) => setSelections((s) => ({ ...s, [item.id]: Math.min(item.maxQuantity, Math.max(item.minQuantity, q)) }));
 
   if (editing && editQuery.isLoading) return <Spinner label="Loading the saved bill" />;
@@ -296,6 +347,13 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
             <Field label="Bill number" error={errors.billNumber} hint={editing ? 'Locked' : isAdmin ? 'Automatic · you can change it' : session ? 'Automatic' : 'Given when saved'}>
               <Input value={shownNumber} onChange={(e) => set('billNumber', e.target.value)} readOnly={!isAdmin || editing} disabled={editing || !session} placeholder={session ? 'Loading…' : 'Assigned when saved'} className={cn('font-mono', (!isAdmin || editing) && 'cursor-not-allowed text-gold')} aria-readonly={!isAdmin || editing} />
             </Field>
+            {multi && !isStaff && (
+              <Field label="Branch" hint={editing ? 'Locked' : 'This bill belongs to'}>
+                {editing
+                  ? <Input value={branches.find((b) => b.id === branchId)?.name ?? ''} readOnly disabled />
+                  : <Select value={branchId ?? ''} onChange={(e) => setBranchPick(e.target.value)}>{activeBranches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select>}
+              </Field>
+            )}
             <Field as="div" label="Event date & time" required className="sm:col-span-2"><DatePicker value={details.eventDate} slots={slots} booked={booked} error={errors.eventDate} allowPast={editQuote ? quoteDates(editQuote.customer) : []} onChange={(v) => { set('eventDate', v); }} onSlotsChange={setSlots} /></Field>
             <Field label="Customer GST number" hint="Optional · shown on the bill"><Input value={details.customerGstNumber} onChange={(e) => set('customerGstNumber', e.target.value.toUpperCase().slice(0, 15))} placeholder="22AAAAA0000A1Z5" /></Field>
           </div>
@@ -320,6 +378,33 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
               {cat && (
                 <div className="space-y-6 p-5">
                   <p className="text-sm text-text-secondary">{cat.description}</p>
+                  {session && isOtherCat(cat) && (
+                    <section className="space-y-4 rounded-2xl border border-dashed border-gold/40 bg-gold/[0.04] p-4" aria-label="Add a custom item">
+                      <div><h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-gold">Add your own item</h3><p className="mt-1 text-xs text-text-secondary">Type a name and a cost for anything that is not in the catalog. Tick “Save for next time” to keep it, then change the cost on each quotation.</p></div>
+                      <div className="grid gap-3 sm:grid-cols-[1fr_130px_170px]">
+                        <Field label="Item name"><Input value={cName} onChange={(e) => setCName(e.target.value)} maxLength={80} placeholder="e.g. Generator fuel" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitCustom(); } }} /></Field>
+                        <Field label="Cost (₹)"><Input type="number" min={0} inputMode="decimal" value={cPrice} onChange={(e) => setCPrice(e.target.value)} placeholder="0" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitCustom(); } }} /></Field>
+                        <Field label="Charged"><Select value={cType} onChange={(e) => setCType(e.target.value as PricingType)}>{(Object.keys(TYPE_LABEL) as PricingType[]).map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}</Select></Field>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <label className="flex cursor-pointer items-center gap-2 text-sm text-text-secondary"><input type="checkbox" checked={cSave} onChange={(e) => setCSave(e.target.checked)} className="size-4 accent-[#3478F6]" /> Save for next time</label>
+                        <Button variant="gold" onClick={submitCustom} disabled={savePresets.isPending}><Plus size={15} /> Add to this quotation</Button>
+                      </div>
+                      {presets.length > 0 && (
+                        <div>
+                          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-secondary"><Bookmark size={12} /> Your saved items · tap to add</p>
+                          <div className="flex flex-wrap gap-2">
+                            {presets.map((p) => (
+                              <span key={p.id} className="inline-flex items-center overflow-hidden rounded-full border border-border bg-input text-xs">
+                                <button type="button" onClick={() => addCustomItem(p.name, p.price, p.pricingType)} className="px-3 py-1.5 text-text hover:bg-surface-hover" title="Add to this quotation">{p.name} <span className="text-gold">{inr(p.price)}</span><span className="text-text-disabled"> {unit(p.pricingType)}</span></button>
+                                <button type="button" onClick={() => deletePreset(p.id)} aria-label={`Remove saved item ${p.name}`} className="border-l border-border px-2 py-1.5 text-text-disabled hover:bg-error-bg hover:text-error"><X size={12} /></button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </section>
+                  )}
                   {cat.subcategories.map((sub) => (
                     <section key={sub.id}>
                       <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary">{sub.name}</h3>
@@ -341,7 +426,15 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
                                     <button type="button" aria-label="Increase" onClick={() => setQty(item, (selections[item.id] ?? 1) + 1)} className="grid size-8 place-items-center text-text-secondary hover:text-text"><Plus size={14} /></button>
                                   </div>
                                 )}
-                                <span className="text-right"><span className="block text-sm font-semibold text-text tabular">{inr(price)}</span><span className="block text-[11px] text-text-disabled">{unit(item.pricingType)}</span></span>
+                                {item.id.startsWith('custom-') && on ? (
+                                  <span className="flex items-center gap-2">
+                                    <label className="flex items-center rounded-lg border border-border bg-input pl-2 text-sm text-text-secondary">₹<input type="number" min={0} inputMode="decimal" aria-label={`Cost of ${item.name}`} value={priceOverrides[item.id] ?? item.price} onChange={(e) => setPriceOverrides((p) => ({ ...p, [item.id]: Math.max(0, Number(e.target.value) || 0) }))} className="h-8 w-24 bg-transparent px-1.5 text-right text-sm font-semibold text-text focus:outline-none" /></label>
+                                    <span className="text-[11px] text-text-disabled">{unit(item.pricingType)}</span>
+                                    <button type="button" onClick={() => removeCustom(item.id)} aria-label={`Remove ${item.name}`} className="grid size-8 place-items-center rounded-lg text-text-disabled hover:bg-error-bg hover:text-error"><Trash2 size={14} /></button>
+                                  </span>
+                                ) : (
+                                  <span className="text-right"><span className="block text-sm font-semibold text-text tabular">{inr(price)}</span><span className="block text-[11px] text-text-disabled">{unit(item.pricingType)}</span></span>
+                                )}
                               </div>
                             </div>
                           );
@@ -385,7 +478,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
       {/* summary */}
       <aside ref={summaryRef} id="summary" className="min-w-0 xl:sticky xl:top-24 xl:self-start">
         <Card className="overflow-hidden border-gold/25">
-          <div className="sidebar-dark rounded-t-2xl border-b border-border/70 bg-brand px-5 py-4"><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold">Live estimate</p><h2 className="font-display text-xl font-semibold text-text">Your celebration</h2></div>
+          <div className="sidebar-dark border-b border-border/70 bg-brand px-5 py-4"><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold">Live estimate</p><h2 className="font-display text-xl font-semibold text-text">Your celebration</h2></div>
           <div className="space-y-5 p-5">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               {[['Customer', details.name || '—'], ['Occasion', eventTypeLabel(details) || '—'], [dates.length > 1 ? 'Dates' : 'Date', dates.length ? formatEventDates(dates) : '—'], ['Guests', guests ? `${num(guests)} guests` : '—']].map(([k, v]) => (
@@ -425,7 +518,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
               <Button variant="ghost" onClick={copy}><Copy size={15} /> Copy text</Button>
               {saved || editing ? <Button variant="ghost" onClick={() => navigate(embedded ? `/admin/quotes/${encodeURIComponent((saved ?? editQuote)?.reference ?? '')}` : '/')}><ChevronRight size={15} /> Open bill</Button> : <Button variant="ghost" onClick={reset}><RotateCcw size={15} /> Reset</Button>}
             </div>
-            {saved && !editing && <Button variant="soft" className="w-full" onClick={() => { setSaved(null); setDetails(INITIAL); setSelections({}); setSlots({}); setAdvancePaid(false); setAdvanceAmount(''); setDiscountEnabled(false); setDiscountPercent(''); setDiscountFlat(''); }}><Plus size={15} /> Start another</Button>}
+            {saved && !editing && <Button variant="soft" className="w-full" onClick={() => { setSaved(null); setDetails(INITIAL); setCustomItems([]); setPriceOverrides({}); setSelections({}); setSlots({}); setAdvancePaid(false); setAdvanceAmount(''); setDiscountEnabled(false); setDiscountPercent(''); setDiscountFlat(''); }}><Plus size={15} /> Start another</Button>}
           </div>
         </Card>
       </aside>

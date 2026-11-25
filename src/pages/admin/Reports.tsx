@@ -4,6 +4,7 @@ import { Button, Card, CardHeader, EmptyState, Select, Spinner, useUi } from '@/
 import { RangePicker } from '@/components/RangePicker';
 import { StatusBadge } from '@/components/PaymentBadge';
 import { useBusiness, useQuotes } from '@/lib/api';
+import { useBranchScope } from '@/lib/branch';
 import { formatEventDates, inr, inrCompact } from '@/lib/format';
 import { dayOf, inPeriod, loadRange, resolveRange, saveRange, type RangeState } from '@/lib/range';
 import { earliestDate } from '@/lib/stats';
@@ -25,7 +26,8 @@ export function Reports() {
   if (isLoading) return <Spinner label="Loading reports" />;
 
   const sum = rows.reduce((a, q) => { const p = quotePaymentState(q.pricing); return { total: a.total + q.pricing.grandTotal, recv: a.recv + p.received, bal: a.bal + p.balance, booked: a.booked + (q.status === 'confirmed' ? 1 : 0) }; }, { total: 0, recv: 0, bal: 0, booked: 0 });
-  const title = `Report — ${r.label}`;
+  const { current: viewBranch } = useBranchScope();
+  const title = `Report — ${r.label}${viewBranch ? ` · ${viewBranch.name}` : ''}`;
   const fileKey = `${r.from}_${r.to}`;
 
   const pdf = async () => {
@@ -44,7 +46,7 @@ export function Reports() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><h2 className="font-display text-2xl font-semibold text-text">Reports</h2><p className="mt-1 text-sm text-text-secondary">Choose any period, then download a PDF or spreadsheet.</p></div>
+        <div><h2 className="font-display text-2xl font-semibold text-text">Reports</h2><p className="mt-1 text-sm text-text-secondary">Choose any period, then download a PDF or spreadsheet. The report follows the branch you chose at the top.</p></div>
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="gold" onClick={pdf} disabled={busy || rows.length === 0}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} PDF report</Button>
           <Button variant="outline" onClick={csv} disabled={rows.length === 0}><FileSpreadsheet size={15} /> CSV</Button>

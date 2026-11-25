@@ -6,9 +6,9 @@ import { AdminLayout } from '@/layouts/AdminLayout';
 import { isBackendConfigured } from '@/lib/backend';
 import { Estimator } from '@/pages/Estimator';
 import { Landing } from '@/pages/Landing';
-import { Signup } from '@/pages/Signup';
-import { Buy } from '@/pages/Buy';
-import { Welcome } from '@/pages/Welcome';
+import { RequestAccess } from '@/pages/RequestAccess';
+import { BranchesPage } from '@/pages/admin/BranchesPage';
+import { MessagesPage } from '@/pages/admin/MessagesPage';
 import { BillingPage } from '@/pages/admin/BillingPage';
 import { PlatformPage } from '@/pages/admin/PlatformPage';
 import { AccountPage } from '@/pages/admin/AccountPage';
@@ -57,7 +57,7 @@ function NotFound() {
  *  Nothing of any business is ever shown to visitors. */
 function Home() {
   const { session, loading, isAdmin } = useSession();
-  if (loading) return <BrandedLoader label="Checking your session" />;
+  if (loading) return <BrandedLoader />;
   if (session) return <Redirect to={isAdmin ? '/admin' : '/admin/new'} />;
   return <Landing />;
 }
@@ -87,11 +87,13 @@ export default function App() {
         <Router hook={useHashLocation}>
           <Switch>
             <Route path="/"><Home /></Route>
-            <Route path="/signup"><Signup /></Route>
-            <Route path="/buy"><Buy /></Route>
-            <Route path="/buy/:period">{(p) => <Buy period={p.period} />}</Route>
-            <Route path="/welcome"><Welcome /></Route>
-            <Route path="/welcome/:pid">{(p) => <Welcome pid={p.pid} />}</Route>
+            <Route path="/request-access"><RequestAccess /></Route>
+            {/* the old self-service pages are gone: access is given manually */}
+            <Route path="/signup"><Redirect to="/request-access" /></Route>
+            <Route path="/buy"><Redirect to="/request-access" /></Route>
+            <Route path="/buy/:period"><Redirect to="/request-access" /></Route>
+            <Route path="/welcome"><Redirect to="/login" /></Route>
+            <Route path="/welcome/:pid"><Redirect to="/login" /></Route>
             <Route path="/login"><Login /></Route>
             <Route path="/admin"><AdminLayout ownerOnly><Overview /></AdminLayout></Route>
             <Route path="/admin/quotes"><AdminLayout><Quotes /></AdminLayout></Route>
@@ -102,6 +104,8 @@ export default function App() {
             <Route path="/admin/catalog"><AdminLayout ownerOnly><CatalogPage /></AdminLayout></Route>
             <Route path="/admin/account"><AdminLayout><AccountPage /></AdminLayout></Route>
             <Route path="/admin/billing"><AdminLayout ownerOnly><BillingPage /></AdminLayout></Route>
+            <Route path="/admin/branches"><AdminLayout ownerOnly><BranchesPage /></AdminLayout></Route>
+            <Route path="/admin/messages"><AdminLayout ownerOnly><MessagesPage /></AdminLayout></Route>
             <Route path="/admin/platform"><AdminLayout platformOnly><PlatformPage /></AdminLayout></Route>
             <Route path="/admin/activity"><AdminLayout ownerOnly><ActivityPage /></AdminLayout></Route>
             <Route path="/admin/reports"><AdminLayout ownerOnly><Reports /></AdminLayout></Route>

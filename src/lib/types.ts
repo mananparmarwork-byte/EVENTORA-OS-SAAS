@@ -72,7 +72,7 @@ export type QuotePricing = {
 };
 
 export type QuoteStatus = 'new' | 'contacted' | 'confirmed' | 'archived';
-export type QuoteInput = { reference: string; customer: QuoteCustomer; services: QuoteService[]; pricing: QuotePricing };
+export type QuoteInput = { reference: string; customer: QuoteCustomer; services: QuoteService[]; pricing: QuotePricing; /** which branch the bill belongs to (owner picks; employees are always put in their own branch by the database) */ branchId?: string };
 export type Quote = QuoteInput & { id: string; createdAt: string; status: QuoteStatus };
 
 export type BusinessProfile = {
@@ -129,11 +129,11 @@ export type ActivityData = {
 };
 export type ActivityEntry = {
   id: string; at: string; actorEmail: string; actorRole: Role | 'public' | 'system';
-  action: ActivityAction; reference: string; title: string; detail: string; data: ActivityData; legacy?: boolean;
+  action: ActivityAction; reference: string; title: string; detail: string; data: ActivityData; legacy?: boolean; branchId?: string;
 };
 export type ActivityDraft = Omit<ActivityEntry, 'id' | 'at' | 'actorEmail' | 'actorRole' | 'legacy'>;
 
-export type StaffMember = { id: string; email: string; active: boolean };
+export type StaffMember = { id: string; email: string; active: boolean; branchId?: string | null };
 
 /* ------------------------------------------------------------------ SaaS --- */
 /** The plan code (e.g. 'monthly', 'quarterly', 'yearly' or anything the software owner creates, like 'diwali-offer'). */
@@ -178,15 +178,74 @@ export type PlatformDashboard = {
 };
 export type TenantPayment = { id: string; amount: number; planName: string | null; paidAt: string; offline: boolean };
 
-/* ---- Super admin -> Collections: pending / upcoming / collected money ---- */
+/* ------------------------------------------------------------ Collections (Super admin) --- */
 export type CollectBucket = 'overdue' | 'due_soon' | 'upcoming' | 'autopay' | 'later' | 'none';
+/** One business in Super admin -> Collections. Money is in rupees. */
 export type CollectionRow = {
   id: string; name: string; ownerEmail: string | null; phone: string; state: SubState; bucket: CollectBucket;
-  period: BillingPeriod | null; planName: string | null; endsAt: string | null; daysLeft: number | null; autopay: boolean;
-  amountDue: number; planMonths: number; lastPaymentAt: string | null; lastAmount: number | null;
-  paymentsCount: number; renewals: number; paid: number; note: string;
-  reminders: number; lastReminderAt: string | null; lastFollowupAt: string | null; promiseDate: string | null;
+  period: string | null; planName: string | null; endsAt: string | null; daysLeft: number | null; autopay: boolean;
+  amountDue: number; planMonths: number; lastPaymentAt: string | null; lastAmount: number | null; paymentsCount: number; renewals: number; paid: number;
+  note: string; reminders: number; lastReminderAt: string | null; lastFollowupAt: string | null; promiseDate: string | null;
 };
-export type CollectedPayment = { id: string; tenantId: string; tenant: string; ownerEmail: string | null; amount: number; planName: string | null; paidAt: string; offline: boolean; method: string; note: string; renewal: boolean };
-export type FollowUp = { id: string; action: 'email' | 'whatsapp' | 'copy' | 'call' | 'note' | 'collected'; note: string; promiseDate: string | null; at: string };
+export type CollectedPayment = {
+  id: string; tenantId: string; tenant: string; ownerEmail: string | null; amount: number; planName: string | null; paidAt: string;
+  offline: boolean; method: string; note: string; renewal: boolean;
+};
+export type FollowUpAction = 'email' | 'whatsapp' | 'copy' | 'call' | 'note' | 'collected';
+export type FollowUp = { id: string; action: FollowUpAction; note: string; promiseDate: string | null; at: string };
 export type ReminderResult = { sent: number; failed: number; skipped: string[]; errors: string[] };
+
+
+/* ------------------------------------------------------------ Branches --- */
+export type Branch = { id: string; name: string; address: string; phone: string; isMain: boolean; active: boolean; createdAt: string; staff: number };
+/** `limit` = how many active branches the plan allows (raised when you approve a request). `myBranchId` is set for employees. */
+export type BranchInfo = { branches: Branch[]; limit: number; activeCount: number; myBranchId: string | null };
+
+/* ------------------------------------------------- Saved custom quotation items --- */
+export type Preset = { id: string; name: string; price: number; pricingType: PricingType; note?: string };
+
+/* ------------------------------------------------- Messages, requests, automation --- */
+export type NoticeKind = 'info' | 'reminder' | 'warning' | 'payment' | 'plan' | 'branch' | 'reply' | 'success';
+export type AppNotification = { id: string; kind: NoticeKind; title: string; body: string; actionUrl: string | null; createdAt: string; readAt: string | null; source: 'manual' | 'auto' };
+export type NotificationFeed = { unread: number; items: AppNotification[] };
+
+export type RequestKind = 'branch' | 'renewal' | 'support';
+export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'closed';
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+export type RequestPayload = Record<string, any>;
+export type OwnerRequest = { id: string; kind: RequestKind; status: RequestStatus; subject: string; message: string; payload: RequestPayload; createdAt: string; decidedAt: string | null; note: string };
+export type PlatformRequest = OwnerRequest & { tenantId: string; business: string; ownerEmail: string | null; phone: string; amount: number; branchLimit: number; branchesUsed: number; periodEnd: string | null; subStatus: string | null };
+export type Lead = { id: string; createdAt: string; name: string; business: string; phone: string; email: string; message: string; status: 'new' | 'contacted' | 'done' };
+export type InboxCounts = { requests: number; leads: number };
+
+/** Who receives a message. segment: expiring_7 | expiring_30 | expired | due | trial | paid | multi_branch */
+export type Audience = { mode: 'all' } | { mode: 'selected'; ids: string[] } | { mode: 'segment'; segment: string };
+export type Recipient = { id: string; business: string; ownerEmail: string | null; phone: string; title: string; body: string; endDate?: string; plan?: string };
+export type SendResult = { campaignId: string; count: number; recipients: Recipient[]; email: boolean };
+export type Campaign = { id: string; createdAt: string; title: string; body: string; kind: NoticeKind; channels: string[]; audienceLabel: string; count: number; read: number };
+export type MessageTemplate = { id: string; name: string; title: string; body: string; kind: NoticeKind; builtin: boolean };
+export type MessageRule = { key: string; label: string; description: string; trigger: 'before_end' | 'after_end' | 'event'; appliesTo: 'any' | 'trial' | 'paid'; days: number; enabled: boolean; title: string; body: string; kind: NoticeKind; channels: string[]; sent: number };
+
+export type PlatformConfig = { whatsapp: string; phone: string; email: string; upi: string; payee: string; bankText: string; instructions: string; branchPrice: number; allowSelfSignup: boolean };
+export type PaymentInfo = Partial<PlatformConfig>;
+export type PublicContact = { whatsapp: string; phone: string; email: string };
+export type TenantMeta = { id: string; businessType: string; phone: string; branchLimit: number; branches: number; owners: number; unread: number };
+export type NewOwner = { email: string; password: string; businessName: string; businessType: string; phone: string; period: string; until: string; amountRupees: number; note: string; tenantId?: string };
+export type NewOwnerResult = { email: string; name: string; slug: string; existing: boolean; linkedExistingLogin: boolean; tenantId: string };
+
+
+/* ---------------------------------------------- Billing quote and invoices --- */
+export type QuoteLine = { label: string; amount: number };
+/** What the owner has to pay for: renew plan and/or add branches. Calculated by the database. */
+export type BillingQuote = {
+  renew: boolean; period: string; planName: string; planMonths: number; planPrice: number; branchPrice: number;
+  extras: number; keep: number; newCount: number; monthsLeft: number; branchMonths: number; lines: QuoteLine[]; total: number; newEnd: string | null;
+};
+export type InvoiceParty = { name?: string; address?: string; gstin?: string; pan?: string; phone?: string; email?: string; terms?: string; footer?: string };
+export type Invoice = {
+  id: string; number: string; issuedAt: string; tenantId: string; business: string; billTo: InvoiceParty; seller: InvoiceParty;
+  items: { description: string; amount: number }[]; gstEnabled: boolean; gstRate: number; subtotal: number; gst: number; total: number; paid: number;
+  paymentRef: string; paidOn: string | null; periodFrom: string | null; periodTo: string | null; planName: string; notes: string;
+};
+export type InvoicePatch = Partial<Pick<Invoice, 'items' | 'gstEnabled' | 'gstRate' | 'paymentRef' | 'notes' | 'planName'>> & { number?: string; billTo?: InvoiceParty; seller?: InvoiceParty; paid?: number; paidOn?: string; issuedAt?: string };
+export type InvoiceSettings = InvoiceParty & { prefix: string; next: number; gstEnabled: boolean; gstRate: number };

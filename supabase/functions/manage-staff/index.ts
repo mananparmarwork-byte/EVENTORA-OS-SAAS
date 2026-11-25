@@ -61,6 +61,14 @@ Deno.serve(async (req) => {
       const pwErr = passwordProblem(body.password);
       if (pwErr) return json({ error: pwErr }, 400);
 
+      // optional: which branch the employee belongs to (must be an active branch of this business; otherwise the Main branch is used)
+      let branchId: string | null = null;
+      if (body.branchId) {
+        const { data: br } = await admin.from('branches').select('id').eq('id', String(body.branchId)).eq('tenant_id', tenantId).eq('active', true).maybeSingle();
+        if (!br) return json({ error: 'Choose an active branch.' }, 400);
+        branchId = br.id as string;
+      }
+
       const { count } = await admin.from('members').select('user_id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('role', 'staff');
       if ((count ?? 0) >= MAX_EMPLOYEES) return json({ error: `Your plan allows up to ${MAX_EMPLOYEES} employees.` }, 400);
 
@@ -70,7 +78,7 @@ Deno.serve(async (req) => {
         const msg = error?.message ?? 'Could not create the login.';
         return json({ error: /already|registered|exists/i.test(msg) ? 'That email already has a login.' : msg }, 400);
       }
-      const { error: insErr } = await admin.from('members').insert({ user_id: data.user.id, tenant_id: tenantId, role: 'staff', email, active: true });
+      const { error: insErr } = await admin.from('members').insert({ user_id: data.user.id, tenant_id: tenantId, role: 'staff', email, active: true, branch_id: branchId });
       if (insErr) {
         await admin.auth.admin.deleteUser(data.user.id); // do not leave a login without a role
         return json({ error: 'Could not save the employee: ' + insErr.message }, 400);

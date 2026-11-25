@@ -92,3 +92,9 @@ Ported into the SaaS build: login-only app (public customer estimator removed), 
 
 ## 12. Buy first + automatic admin + renewal reconnect (22 Oct 2026)
 SQL `13-purchase-onboarding.sql` (+ `13-check.sql`): `tenants.owner_email` (unique), `purchases` table, `purchase_event` (webhook, server only), `purchase_precheck`, `purchase_price`, `purchase_status`, `save_purchase_profile`, `claim_purchase` (the auto-admin step, runs at sign-in), `create_tenant` now reconnects by admin email. Edge: new `create-purchase`; `razorpay-webhook` handles subscriptions carrying `notes.email`; shared Razorpay-plan helper in `_shared.ts`. App: `pages/Buy.tsx`, `pages/Welcome.tsx` (post-purchase page + quick-start), routes `/buy`, `/buy/:period`, `/welcome`, `/welcome/:pid`; `backend.ts` `autoClaim()` in sign-in and session; Landing/Login links. `npm run typecheck` and `npm run build` pass. See SAAS-SETUP.md section 9.
+
+---
+## Update: manual access, messages, multi-branch, custom items
+See `NEW-FEATURES.md` for set-up and behaviour. New files: `supabase/16-…sql`, `17-auto-messages-cron.sql`, `functions/platform-owners`, `functions/send-message-emails`,
+`src/lib/{backendExt,apiExt,branch}.ts`, `src/components/{BranchSwitcher,NotificationBell,BranchCompare,noticeStyle}`, `src/pages/{RequestAccess,admin/BranchesPage,admin/MessagesPage,admin/PlatformOwners,admin/PlatformMessages,admin/PlatformOwnerTools}.tsx`.
+`useQuotes()` / `useActivity()` are now branch-scope aware (`useQuotes({ all: true })` ignores the switcher). `Backend` now extends `SaasExt`.

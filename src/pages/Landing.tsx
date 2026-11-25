@@ -54,7 +54,7 @@ export function PricingCards({ cta, period: controlled, onPeriod, finalPrice }: 
         {finalPrice != null && finalPrice < plan.price && <p className="mt-3 text-lg text-text-disabled line-through tabular">{inr(plan.price)}</p>}
         <p className={cn('font-display text-5xl font-semibold text-text tabular', finalPrice == null && 'mt-3')}>{inr(shown)}</p>
         <p className="mt-1 text-sm text-text-secondary">{perLabel(plan.months)}{plan.months > 1 ? ` · about ${inr(Math.round(shown / plan.months))} a month` : ''}</p>
-        <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-success-bg px-3 py-1 text-[11px] font-medium text-success"><Check size={12} /> Autopay: you are charged automatically, nothing to remember</p>
+        <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-success-bg px-3 py-1 text-[11px] font-medium text-success"><Check size={12} /> Simple manual billing: pay us directly, we switch access on</p>
         <ul className="mt-6 space-y-2.5 text-left text-sm">
           {features.map((f) => <li key={f} className="flex items-start gap-2.5 text-text-secondary"><Check size={16} className="mt-0.5 shrink-0 text-gold" />{f}</li>)}
         </ul>
@@ -72,7 +72,7 @@ export function Landing() {
           <Brand subtitle="Venue & event operations" />
           <div className="flex items-center gap-2">
             <Link href="/login"><Button variant="ghost">Sign in</Button></Link>
-            <Link href="/buy"><Button variant="gold">Choose a plan</Button></Link>
+            <Link href="/request-access"><Button variant="gold">Request access</Button></Link>
           </div>
         </div>
       </header>
@@ -84,10 +84,10 @@ export function Landing() {
           <h1 className="mt-4 font-display text-4xl font-semibold leading-tight sm:text-6xl">Run your venue from one calm dashboard.</h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-text-secondary">Quotations, bookings, payments and your team in one place, with a full record of everything that happens.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link href="/buy"><Button variant="gold" size="lg">Choose your plan</Button></Link>
-            <Link href="/signup"><Button variant="outline" size="lg">Start free trial</Button></Link>
+            <Link href="/request-access"><Button variant="gold" size="lg">Request access</Button></Link>
+            <a href="#pricing"><Button variant="outline" size="lg">See pricing</Button></a>
           </div>
-          <p className="mt-3 text-xs text-text-disabled">Pay, set a password, and your workspace opens by itself · cancel anytime · <a href="#pricing" className="text-gold hover:underline">see pricing</a></p>
+          <p className="mt-3 text-xs text-text-disabled">We set up your owner login and switch your workspace on · your data stays yours · <Link href="/login" className="text-gold hover:underline">sign in</Link></p>
         </div>
       </section>
 
@@ -102,11 +102,11 @@ export function Landing() {
       <section id="pricing" className="px-4 pb-24 sm:px-8">
         <div className="mx-auto max-w-6xl">
           <h2 className="text-center font-display text-3xl font-semibold">Simple pricing</h2>
-          <p className="mx-auto mb-8 mt-2 max-w-md text-center text-sm text-text-secondary">One plan with everything included. Pay monthly, quarterly or yearly.</p>
+          <p className="mx-auto mb-8 mt-2 max-w-md text-center text-sm text-text-secondary">One plan with everything included. Choose the period that suits you.</p>
           <PricingCards cta={(p) => (
             <div className="space-y-3">
-              <Link href={`/buy/${p}`}><Button variant="gold" size="lg" className="w-full">Buy this plan</Button></Link>
-              <Link href="/signup" className="block text-xs text-text-secondary hover:text-gold">Or try it free first</Link>
+              <Link href="/request-access"><Button variant="gold" size="lg" className="w-full">Request access</Button></Link>
+              <p className="text-xs text-text-secondary">We will contact you and set everything up.</p>
             </div>
           )} />
         </div>

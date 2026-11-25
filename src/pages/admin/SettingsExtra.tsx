@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Copy, KeyRound, Loader2, Lock, Save, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, Field, Input, Switch, useUi } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Field, Input, Select, Switch, useUi } from '@/components/ui';
+import { useBranchScope } from '@/lib/branch';
+import { useBranchActions } from '@/lib/apiExt';
 import { canCreateStaff, canManageStaff, useActivitySettings, useLogActivity, useNextBillNumber, useNumbering, usePermissions, usePurgeActivity, useSaveGeneric, useSetNextBillNumber, useStaff, useStaffActions } from '@/lib/api';
 import { cn } from '@/lib/format';
 import type { ActivityDraft, NumberingSettings, StaffPermissions } from '@/lib/types';
@@ -100,6 +102,9 @@ export function TeamTab() {
   const [newPw, setNewPw] = useState('');
   const api = canCreateStaff();
   const manage = canManageStaff();
+  const { branches, activeBranches, multi, main } = useBranchScope();
+  const { moveStaff } = useBranchActions();
+  const [newBranch, setNewBranch] = useState('');
   const pwProblem = password ? passwordProblem(password) : '';
 
   const toggle = (key: (typeof PERMS)[number]['key'], v: boolean) => {
@@ -107,7 +112,7 @@ export function TeamTab() {
   };
   const create = () => {
     const mail = email.trim();
-    actions.create.mutate({ email: mail, password }, { onSuccess: () => { toast(`Login created for ${mail}. Give them the password; they can change it under My account.`); void log(changed('Employee added', mail)); setEmail(''); setPassword(''); }, onError: (e) => toast(e.message, 'error') });
+    actions.create.mutate({ email: mail, password, branchId: multi ? (newBranch || main?.id) : undefined }, { onSuccess: () => { toast(`Login created for ${mail}. Give them the password; they can change it under My account.`); void log(changed('Employee added', mail)); setEmail(''); setPassword(''); }, onError: (e) => toast(e.message, 'error') });
   };
   const sql = `insert into public.staff_users (user_id, email)\nselect id, email from auth.users where email = '${email.trim() || 'EMPLOYEE-EMAIL@example.com'}'\non conflict (user_id) do update set active = true;`;
   const copy = async () => { try { await navigator.clipboard.writeText(sql); toast('SQL copied.'); } catch { toast('Copy is blocked in this browser.', 'error'); } };
@@ -147,7 +152,7 @@ export function TeamTab() {
               {(staff.data ?? []).map((m) => (
                 <li key={m.id} className="px-5 py-3">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="min-w-0"><span className="block truncate text-sm font-medium text-text">{m.email}</span><Badge tone={m.active ? 'success' : 'neutral'} className="mt-1">{m.active ? 'Active' : 'Switched off'}</Badge></span>
+                    <span className="min-w-0"><span className="block truncate text-sm font-medium text-text">{m.email}</span><Badge tone={m.active ? 'success' : 'neutral'} className="mt-1">{m.active ? 'Active' : 'Switched off'}</Badge>{multi && <select aria-label={`Branch of ${m.email}`} value={m.branchId ?? main?.id ?? ''} onChange={(e) => moveStaff.mutate({ userId: m.id, branchId: e.target.value }, { onSuccess: () => toast('Employee moved.'), onError: (er) => toast(er.message, 'error') })} className="ml-2 mt-1 h-6 rounded-md border border-border bg-input px-1.5 text-[11px] text-text-secondary">{branches.filter((b) => b.active || b.id === m.branchId).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>}</span>
                     <span className="flex shrink-0 items-center gap-1">
                       {manage && <Button variant="ghost" size="sm" title="Set a new password" onClick={() => { setResetFor(resetFor === m.id ? '' : m.id); setNewPw(''); }}><KeyRound size={14} /></Button>}
                       {manage && <Button variant="ghost" size="sm" title="Delete this login" onClick={() => void remove(m.id, m.email)} disabled={actions.remove.isPending}><Trash2 size={14} className="text-error" /></Button>}
@@ -171,6 +176,7 @@ export function TeamTab() {
           <CardHeader title="Add an employee" subtitle={api ? 'Creates their login right here — no SQL needed' : 'Two quick steps in Supabase'} />
           <div className="space-y-4 p-5">
             <Field label="Employee email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@gmail.com" autoComplete="off" /></Field>
+            {multi && <Field label="Branch" hint="they only see this branch"><Select value={newBranch || main?.id || ''} onChange={(e) => setNewBranch(e.target.value)}>{activeBranches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>}
             {api ? (
               <>
                 <Field label="Password" hint="10+ characters, with a letter and a number" error={pwProblem}><Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" /></Field>

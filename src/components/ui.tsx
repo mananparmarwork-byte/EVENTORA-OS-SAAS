@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { cn } from '@/lib/format';
@@ -5,14 +6,13 @@ import { cn } from '@/lib/format';
 /* ---------------------------------------------------------------- Buttons --- */
 type Variant = 'gold' | 'outline' | 'ghost' | 'danger' | 'soft';
 const VARIANTS: Record<Variant, string> = {
-  gold: 'bg-gold text-text-on-gold hover:bg-gold-hover font-semibold shadow-[0_4px_14px_rgba(52,120,246,.28)] hover:shadow-[0_6px_18px_rgba(52,120,246,.34)]',
+  gold: 'bg-gold text-text-on-gold hover:bg-gold-hover font-semibold shadow-[0_6px_18px_rgba(52,120,246,.28)]',
   outline: 'border border-border bg-surface text-text hover:bg-surface-hover hover:border-steel-blue',
   soft: 'bg-surface-hover text-text hover:bg-border',
   ghost: 'bg-transparent text-text-secondary hover:bg-surface-hover hover:text-text',
   danger: 'border border-error/30 bg-error-bg text-error hover:bg-error/15',
 };
-/** `loading` shows a small spinner and blocks double clicks. */
-export function Button({ variant = 'outline', size = 'md', className, children, loading, disabled, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'sm' | 'md' | 'lg'; loading?: boolean }) {
+export function Button({ variant = 'outline', size = 'md', loading = false, className, children, disabled, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'sm' | 'md' | 'lg'; loading?: boolean }) {
   const sizes = { sm: 'h-8 px-3 text-xs', md: 'h-10 px-4 text-sm', lg: 'h-12 px-6 text-sm' };
   return (
     <button
@@ -29,7 +29,7 @@ export function Button({ variant = 'outline', size = 'md', className, children, 
 }
 
 /* ------------------------------------------------------------------ Fields --- */
-const control = 'rounded-xl border border-border bg-input px-3.5 text-sm text-text transition-all duration-150 hover:border-steel-blue focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/10 disabled:opacity-50';
+const control = 'rounded-xl border border-border bg-input px-3.5 text-sm text-text transition-colors hover:border-steel-blue/70 focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/10 disabled:opacity-50';
 /** Default width / height only when the caller did not choose their own (two competing Tailwind classes would be decided by stylesheet order, not by us). */
 const sized = (className: string | undefined, h = 'h-11') => cn(/(^|\s)w-/.test(className ?? '') ? '' : 'w-full', /(^|\s)h-/.test(className ?? '') ? '' : h);
 export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
@@ -64,8 +64,8 @@ export function Switch({ checked, onChange, label, description, disabled }: { ch
         </span>
       )}
       <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
-        className={cn('relative h-6 w-11 shrink-0 rounded-full border transition-colors', checked ? 'border-gold bg-gold' : 'border-border bg-input')}>
-        <span className={cn('absolute top-0.5 size-5 rounded-full transition-all duration-200', checked ? 'left-[22px] bg-white shadow' : 'left-0.5 bg-text-disabled')} />
+        className={cn('relative h-6 w-11 shrink-0 rounded-full border transition-colors', checked ? 'border-gold bg-gold' : 'border-border bg-[#CBD5E3]')}>
+        <span className={cn('absolute top-0.5 size-5 rounded-full bg-white shadow transition-all', checked ? 'left-[22px]' : 'left-0.5')} />
       </button>
     </label>
   );
@@ -113,52 +113,60 @@ export function EmptyState({ icon, title, text, action }: { icon: ReactNode; tit
 
 /** Shimmering placeholder block. */
 export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden="true" className={cn('skeleton rounded-lg', className)} />;
+  return <div aria-hidden="true" className={cn('skeleton', className)} />;
 }
-/** Compact loading placeholder (lists, tables, modals). The old spinner name is kept so every screen gets it. */
+
+/** Compact shimmer rows. (The name stays "Spinner" so every existing screen gets the new look.) */
 export function Spinner({ label = 'Loading' }: { label?: string }) {
   return (
-    <div role="status" aria-live="polite" className="space-y-3 px-5 py-6">
+    <div role="status" aria-label={label} className="space-y-3 px-1 py-8">
+      <Skeleton className="h-4 w-1/3" />
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-4/5" />
       <span className="sr-only">{label}…</span>
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="flex items-center gap-3"><Skeleton className="size-10 shrink-0 rounded-xl" /><div className="min-w-0 flex-1 space-y-2"><Skeleton className="h-3.5 w-2/3" /><Skeleton className="h-3 w-1/3" /></div><Skeleton className="h-4 w-16" /></div>
-      ))}
-    </div>
-  );
-}
-/** Full-page placeholder: header, four KPI cards and a chart. Used instead of a blank screen. */
-export function PageSkeleton({ label = 'Loading' }: { label?: string }) {
-  return (
-    <div role="status" aria-live="polite" className="space-y-6">
-      <span className="sr-only">{label}…</span>
-      <div className="flex items-end justify-between gap-4"><div className="space-y-2"><Skeleton className="h-8 w-64" /><Skeleton className="h-4 w-48" /></div><Skeleton className="h-10 w-36 rounded-xl" /></div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <Card key={i} className="space-y-4 p-5"><Skeleton className="size-10 rounded-xl" /><Skeleton className="h-3 w-24" /><Skeleton className="h-7 w-32" /><Skeleton className="h-9 w-full" /></Card>)}</div>
-      <div className="grid gap-6 xl:grid-cols-3"><Card className="space-y-4 p-5 xl:col-span-2"><Skeleton className="h-5 w-40" /><Skeleton className="h-56 w-full" /></Card><Card className="p-1"><Spinner label={label} /></Card></div>
     </div>
   );
 }
 
-/** Counts a number up when it first appears ("₹1,25,000", "42", "₹1.2L" all work). Honors reduced-motion. */
-export function CountText({ value, duration = 700 }: { value: string; duration?: number }) {
-  const [text, setText] = useState(value);
+/** Full-page placeholder: header, four KPI cards, a chart and a list. */
+export function PageSkeleton() {
+  return (
+    <div role="status" aria-label="Loading" className="space-y-6">
+      <div className="space-y-2"><Skeleton className="h-7 w-56" /><Skeleton className="h-4 w-80 max-w-full" /></div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-36 rounded-2xl" />)}</div>
+      <Skeleton className="h-72 rounded-2xl" />
+      <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14 rounded-2xl" />)}</div>
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
+}
+
+/** Shows a value such as "₹12,50,000" or "42" and counts its first number up over about 700 ms. Off for reduced motion. */
+export function CountText({ value }: { value: string }) {
+  const m = /\d[\d,]*(?:\.\d+)?/.exec(value);
+  const target = m ? Number(m[0].replace(/,/g, '')) : NaN;
+  const reduce = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+  const [n, setN] = useState<number>(reduce || !Number.isFinite(target) ? target : 0);
+  const from = useRef(0);
   useEffect(() => {
-    const m = /\d[\d,]*\.?\d*/.exec(value);
-    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (!m || reduce) { setText(value); return; }
-    const target = Number(m[0].replace(/,/g, ''));
-    if (!Number.isFinite(target) || target === 0) { setText(value); return; }
-    const decimals = (m[0].split('.')[1] ?? '').length, grouped = m[0].includes(',');
-    const fmt = (n: number) => (grouped ? n.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : n.toFixed(decimals));
-    let raf = 0; const t0 = performance.now();
-    const tick = (now: number) => {
-      const k = Math.min(1, (now - t0) / duration), eased = 1 - Math.pow(1 - k, 3);
-      setText(k >= 1 ? value : value.replace(m[0], fmt(target * eased)));
-      if (k < 1) raf = requestAnimationFrame(tick);
+    if (!Number.isFinite(target) || reduce) { setN(target); from.current = target; return; }
+    const begin = from.current;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / 700);
+      setN(begin + (target - begin) * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) raf = requestAnimationFrame(tick); else from.current = target;
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [value, duration]);
-  return <>{text}</>;
+  }, [target, reduce]);
+  if (!m || !Number.isFinite(target)) return <>{value}</>;
+  const token = m[0];
+  const decimals = token.includes('.') ? token.split('.')[1].length : 0;
+  const text = new Intl.NumberFormat('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: token.includes(',') }).format(n);
+  return <>{value.slice(0, m.index)}{text}{value.slice(m.index + token.length)}</>;
 }
 
 /* ------------------------------------------------------------------- Modal --- */
@@ -170,7 +178,8 @@ export function Modal({ title, eyebrow, onClose, children, width = 'max-w-xl', f
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
   }, [onClose]);
-  return (
+  // rendered into <body> so no animated or blurred parent can trap this full-screen layer
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-obsidian/50 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-label={title} className={cn('pop-in flex max-h-[92dvh] w-full flex-col rounded-t-3xl border border-border bg-surface shadow-2xl sm:rounded-3xl', width)}>
         <div className="flex items-start justify-between gap-4 border-b border-border/70 px-6 py-5">
@@ -183,7 +192,8 @@ export function Modal({ title, eyebrow, onClose, children, width = 'max-w-xl', f
         <div className="overflow-y-auto px-6 py-5">{children}</div>
         {footer && <div className="flex flex-wrap justify-end gap-3 border-t border-border/70 px-6 py-4">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -213,7 +223,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast-in pointer-events-auto flex items-start gap-3 rounded-xl border border-border border-l-4 bg-surface px-4 py-3 text-sm shadow-[0_12px_32px_rgba(16,29,53,.16)] ${t.kind === 'success' ? 'border-l-success' : t.kind === 'error' ? 'border-l-error' : 'border-l-info'}`}>
+          <div key={t.id} className={cn('toast-in pointer-events-auto flex items-start gap-3 rounded-xl border border-l-4 border-border bg-surface px-4 py-3 text-sm shadow-xl', { success: 'border-l-success', error: 'border-l-error', info: 'border-l-info' }[t.kind])}>
             {icon[t.kind]}<span className="min-w-0 flex-1 text-text">{t.text}</span>
           </div>
         ))}

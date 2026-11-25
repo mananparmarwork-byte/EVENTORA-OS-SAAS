@@ -4,6 +4,8 @@ import { ArrowDownRight, ArrowUpRight, BarChart3, CalendarCheck, CalendarDays, F
 import { Button, Card, CardHeader, CountText, EmptyState, PageSkeleton, Select, Sparkline, Spinner } from '@/components/ui';
 import { StatusBadge } from '@/components/PaymentBadge';
 import { RangePicker } from '@/components/RangePicker';
+import { BranchCompare } from '@/components/BranchCompare';
+import { useBranchScope } from '@/lib/branch';
 import { ActivityList } from '@/components/ActivityList';
 import { useActivitySettings, usePurgeActivity, useQuotes } from '@/lib/api';
 import { ACTIVITY_FILTERS, actorLabel, matchesFilter, type ActivityFilter } from '@/lib/activity';
@@ -25,7 +27,7 @@ function Kpi({ icon, label, value, note, series, color, change }: { icon: React.
   return (
     <Card className="lift p-5">
       <div className="flex items-center justify-between gap-2">
-        <span className="grid size-10 place-items-center rounded-xl bg-gold/10 text-gold">{icon}</span>
+        <span className="grid size-10 place-items-center rounded-xl bg-surface-hover text-gold">{icon}</span>
         <span className="flex flex-col items-end gap-0.5 text-right">{change !== undefined && <Delta value={change} />}{note && <span className="text-[11px] text-text-secondary">{note}</span>}</span>
       </div>
       <p className="mt-4 text-xs text-text-secondary">{label}</p>
@@ -82,6 +84,7 @@ export function Overview() {
   const { entries, isLoading: feedLoading, retention } = useActivityFeed(true);
   const { activitySettings } = useActivitySettings(true);
   const purge = usePurgeActivity();
+  const { current: viewBranch, multi } = useBranchScope();
   const [range, setRange] = useState<RangeState>(() => loadRange('overview'));
   const [metric, setMetric] = useState<Metric>('revenue');
   const [kind, setKind] = useState<'line' | 'bar'>('line');
@@ -113,7 +116,7 @@ export function Overview() {
   const feed = useMemo(() => entries.filter((a) => inPeriod(a.at, r) && matchesFilter(a, filter) && (actor === 'all' || actorLabel(a) === actor)), [entries, r, filter, actor]);
   const existing = useMemo(() => new Set(quotes.map((q) => q.reference)), [quotes]);
 
-  if (isLoading) return <PageSkeleton label="Loading your workspace" />;
+  if (isLoading) return <PageSkeleton />;
   if (error) return <Card className="p-8 text-center text-sm text-error">Could not load data: {(error as Error).message}</Card>;
 
   const booked = quotes.filter((q) => q.status === 'confirmed');
@@ -127,7 +130,7 @@ export function Overview() {
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <h2 className="font-display text-3xl font-semibold text-text">{greeting()}</h2>
-          <p className="mt-1 text-sm text-text-secondary">Here is your venue performance at a glance.</p>
+          <p className="mt-1 text-sm text-text-secondary">{multi ? (viewBranch ? `Showing ${viewBranch.name} only. Use the branch switcher at the top to change.` : 'Showing all branches combined.') : 'Here is your venue performance at a glance.'}</p>
         </div>
         <div className="flex gap-3">
           <Link href="/admin/new"><Button variant="gold"><Plus size={16} /> New Booking</Button></Link>
@@ -139,6 +142,8 @@ export function Overview() {
         <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-gold">Report period</p>
         <RangePicker value={range} onChange={changeRange} earliest={earliestDate(quotes)} />
       </Card>
+
+      <BranchCompare period={r} />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi icon={<Users size={19} />} label="Total quotations" value={String(now.quotations)} series={qs} change={delta(now.quotations, before.quotations)} note="vs previous period" />

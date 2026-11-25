@@ -46,7 +46,7 @@ export function PlansTab() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader title="Plans for sale" subtitle="Everything buyers can choose on the website and in Billing. Razorpay plans are created for you automatically."
+        <CardHeader title="Plans for sale" subtitle="Everything buyers can choose on the website and in Billing."
           action={<Button variant="gold" size="sm" onClick={() => setForm(blankPlan((all.at(-1)?.sort ?? 0) + 1))}><Plus size={15} /> New plan</Button>} />
         {all.length === 0 ? (
           <EmptyState icon={<Tags size={20} />} title="No plans yet" text="Create your first plan so people can buy." />
@@ -72,7 +72,7 @@ export function PlansTab() {
             ))}
           </div>
         )}
-        <p className="border-t border-border/70 px-5 py-4 text-xs text-text-secondary">A new price applies to new subscriptions. People already on autopay keep the price they signed up at, until they cancel and subscribe again. A plan that has been sold can be switched off but not deleted, and its duration cannot change.</p>
+        <p className="border-t border-border/70 px-5 py-4 text-xs text-text-secondary">A new price applies to new subscriptions. Older accounts that renew by themselves keep the price they signed up at. A plan that has been sold can be switched off but not deleted, and its duration cannot change.</p>
       </Card>
 
       {form && (
@@ -145,7 +145,7 @@ export function CouponsTab() {
           </div>
           <Field label="Note to yourself" hint="optional"><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder="Diwali offer" /></Field>
           <Button variant="gold" className="w-full" onClick={create} disabled={saveCoupon.isPending || f.code.length < 3}>{saveCoupon.isPending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Create coupon</Button>
-          <p className="text-xs text-text-secondary">Each business can use a coupon once. A discount coupon applies to every autopay payment of that subscription.</p>
+          <p className="text-xs text-text-secondary">Each business can use a coupon once. A free-days code is redeemed by the owner in Billing. A discount code is not applied automatically: the owner tells you the code when they pay, and you record the amount with Collect.</p>
         </div>
       </Card>
 

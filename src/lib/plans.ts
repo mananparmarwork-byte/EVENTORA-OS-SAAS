@@ -2,7 +2,7 @@ import type { BillingPeriod, Plan } from './types';
 
 /**
  * (These are only the FALLBACK prices shown if the database cannot be reached. The real prices and the free-trial length are set
- *  in the app: All businesses -> Plans and Settings. Razorpay plans are created automatically, you do not need to make them.)
+ *  in the app: All businesses -> Plans and Settings.)
  */
 export const PLAN_NAME = 'Eventora Pro';
 export const PRICES: Record<BillingPeriod, { label: string; months: number; price: number }> = {

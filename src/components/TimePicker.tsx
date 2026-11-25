@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Clock } from 'lucide-react';
 import { Button } from './ui';
 import { formatTime, toMinutes } from '@/lib/booking';
@@ -65,7 +66,7 @@ function Dial({ mode, hour12, minute, onPick, onDone }: { mode: Mode; hour12: nu
       style={{ width: SIZE, height: SIZE, touchAction: 'none', cursor: 'pointer' }}
     >
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="pointer-events-none absolute inset-0" aria-hidden="true">
-        {mode === 'minute' && Array.from({ length: 60 }, (_, i) => { const a = polar(i * 6, 119), b = polar(i * 6, i % 5 === 0 ? 112 : 115); return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#33415A" strokeWidth={i % 5 === 0 ? 1.5 : 1} />; })}
+        {mode === 'minute' && Array.from({ length: 60 }, (_, i) => { const a = polar(i * 6, 119), b = polar(i * 6, i % 5 === 0 ? 112 : 115); return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#E5EAF1" strokeWidth={i % 5 === 0 ? 1.5 : 1} />; })}
         <line x1={C} y1={C} x2={tip.x} y2={tip.y} stroke="#3478F6" strokeWidth="2" strokeLinecap="round" />
         <circle cx={C} cy={C} r="4" fill="#3478F6" />
         <circle cx={tip.x} cy={tip.y} r="21" fill="#3478F6" />
@@ -103,9 +104,10 @@ function ClockDialog({ value, fallback, title, onCancel, onOk }: { value: string
   const setHour12 = (h: number) => setH24((pm ? 12 : 0) + (h % 12));
   const setAmPm = (toPm: boolean) => setH24((cur) => (cur % 12) + (toPm ? 12 : 0));
 
-  return (
-    <div className="fixed inset-0 z-[70] grid place-items-center bg-obsidian/75 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div role="dialog" aria-modal="true" aria-label={title} className="fade-up w-[320px] max-w-full rounded-3xl border border-border bg-surface p-5 shadow-2xl">
+  // rendered into <body>: no animated or blurred parent can trap or cut off this full-screen layer
+  return createPortal(
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-obsidian/50 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div role="dialog" aria-modal="true" aria-label={title} className="pop-in w-[320px] max-w-full rounded-3xl border border-border bg-surface p-5 shadow-2xl">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold">{title}</p>
         <div className="mt-3 flex items-center justify-center gap-3">
           <div className="flex items-center gap-1 font-display text-5xl font-semibold tabular">
@@ -128,7 +130,8 @@ function ClockDialog({ value, fallback, title, onCancel, onOk }: { value: string
           <Button variant="gold" onClick={() => onOk(`${pad(h24)}:${pad(minute)}`)}>OK</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

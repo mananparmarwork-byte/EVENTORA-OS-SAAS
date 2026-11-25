@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
-/* Eventora OS — Premium Midnight Navy + Electric Blue
-   Token names are kept from the earlier theme so every page re-themes at once ("gold" now means Electric Blue). */
+/* Eventora OS — Midnight Navy + Electric Blue.
+   The token names are unchanged on purpose: "gold" now means Electric Blue, "obsidian" means Midnight Navy. */
 @theme {
   --color-brand: #101D35;
   --color-obsidian: #101D35;
@@ -42,22 +42,20 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3, .font-display { letter-spacing: -0.015em; }
 * { border-color: var(--color-border); }
 ::selection { background: rgba(52, 120, 246, 0.22); }
 :focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
 input[type="date"], input[type="time"] { color-scheme: light; }
 input::placeholder, textarea::placeholder { color: var(--color-text-disabled); }
 select option { background: #FFFFFF; color: #172B4D; }
+
+/* thin light scrollbars */
 * { scrollbar-width: thin; scrollbar-color: #CBD5E3 transparent; }
 
 .tabular { font-variant-numeric: tabular-nums; }
 .gold-rule { height: 1px; background: linear-gradient(90deg, transparent, rgba(52,120,246,.45), transparent); }
-.card-glow { box-shadow: 0 1px 2px rgba(16,29,53,.04), 0 6px 18px rgba(16,29,53,.04); }
-.lift { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
-.lift:hover { transform: translateY(-2px); border-color: rgba(52,120,246,.35); box-shadow: 0 10px 28px rgba(16,29,53,.09); }
 
-/* The navy sidebar re-defines the colour tokens for everything inside it, so the same classes work on dark. */
+/* Everything inside a navy area (sidebar, dark panels) uses these values, so the same classes work on dark. */
 .sidebar-dark {
   --color-text: #EAF0FB;
   --color-text-secondary: #A5B4CF;
@@ -69,36 +67,47 @@ select option { background: #FFFFFF; color: #172B4D; }
   color: var(--color-text);
 }
 
-/* ------------------------------------------------------------------ motion --- */
-@keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes pop-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+.card-glow { box-shadow: 0 1px 2px rgba(16, 29, 53, .04), 0 8px 24px rgba(16, 29, 53, .05); }
+.lift { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.lift:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(16, 29, 53, .10); border-color: rgba(52, 120, 246, .35); }
+
+/* ---- motion. Entrance animations use fill-mode "backwards" (never both/forwards): a leftover transform on a parent
+        would trap position:fixed pop-ups (clock, dialogs) inside it. The page container animation is opacity only. ---- */
+@keyframes fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes fade-up-soft { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes page-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes toast-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
 @keyframes drop-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
-@keyframes shimmer { 100% { transform: translateX(100%); } }
-@keyframes logo-in { from { opacity: 0; transform: scale(.82); } to { opacity: 1; transform: none; } }
-@keyframes breathe { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: .85; } }
-@keyframes splash-out { to { opacity: 0; visibility: hidden; } }
-@keyframes bar-run { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
-
-.fade-up { animation: fade-up .32s cubic-bezier(.2,.7,.2,1) both; }
-.page-in { animation: fade-up .38s cubic-bezier(.2,.7,.2,1) both; }
-.pop-in { animation: pop-in .22s cubic-bezier(.2,.7,.2,1) both; }
-.toast-in { animation: toast-in .25s cubic-bezier(.2,.7,.2,1) both; }
-.drop-in { animation: drop-in .16s ease-out both; transform-origin: top right; }
-.logo-in { animation: logo-in .6s cubic-bezier(.2,.7,.2,1) both; }
-.breathe { animation: breathe 1.8s ease-in-out infinite; }
-
-/* skeleton shimmer */
-.skeleton { position: relative; overflow: hidden; background: #E9EEF5; }
-.skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation: shimmer 1.4s infinite; }
-.sidebar-dark .skeleton { background: #243759; }
-.sidebar-dark .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); }
-
-/* respect the "reduce motion" setting */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
-  .skeleton::after { display: none; }
-}
-
 @keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
-.drawer-in { animation: drawer-in .24s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes logo-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+@keyframes breathe { 0%, 100% { transform: scale(1); opacity: .92; } 50% { transform: scale(1.06); opacity: 1; } }
+@keyframes bar-run { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+.fade-up { animation: fade-up .3s ease backwards; }
+.fade-up-soft { animation: fade-up-soft .25s ease backwards; }
+.page-in { animation: page-in .22s ease backwards; }
+.pop-in { animation: pop-in .2s cubic-bezier(.2, .8, .3, 1) backwards; }
+.toast-in { animation: toast-in .25s ease backwards; }
+.drop-in { animation: drop-in .16s ease backwards; }
+.drawer-in { animation: drawer-in .22s ease backwards; }
+.logo-in { animation: logo-in .5s cubic-bezier(.2, .8, .3, 1) backwards; }
+.breathe { animation: breathe 2.2s ease-in-out infinite; }
+.bar-run { animation: bar-run 1.3s ease-in-out infinite; }
+
+.skeleton {
+  background: linear-gradient(90deg, #EAEFF6 25%, #F6F8FC 50%, #EAEFF6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 12px;
+}
+.sidebar-dark .skeleton { background: linear-gradient(90deg, #1D2D4B 25%, #27395C 50%, #1D2D4B 75%); background-size: 200% 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up, .fade-up-soft, .page-in, .pop-in, .toast-in, .drop-in, .drawer-in, .logo-in { animation-duration: .01ms; }
+  .breathe, .bar-run { animation: none; }
+  .skeleton { animation: none; background: #EAEFF6; }
+  .sidebar-dark .skeleton { background: #1D2D4B; }
+  .lift, .lift:hover { transition: none; transform: none; }
+}

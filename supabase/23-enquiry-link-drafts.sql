@@ -87,6 +87,7 @@ begin
     'found', true,
     'name', coalesce(nullif(btrim(biz ->> 'name'), ''), tn.name),
     'phone', coalesce(biz ->> 'phone', ''),
+    'logo', coalesce(biz ->> 'logo', ''),
     'open', public.tenant_writable(t),
     'branches', coalesce((select jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name) order by b.is_main desc, b.created_at)
                             from public.branches b where b.tenant_id = t and b.active), '[]'::jsonb));

@@ -10,8 +10,8 @@ import type { EventSlots } from '@/lib/types';
 
 const EVENT_TYPES = ['Wedding', 'Reception', 'Engagement', 'Birthday', 'Anniversary', 'Corporate', 'Other'];
 
-type Form = { name: string; mobile: string; email: string; eventType: string; otherEventType: string; guests: string; eventDate: string; branchId: string; website: string };
-const EMPTY: Form = { name: '', mobile: '', email: '', eventType: '', otherEventType: '', guests: '150', eventDate: '', branchId: '', website: '' };
+type Form = { name: string; mobile: string; email: string; eventType: string; otherEventType: string; guests: string; eventDate: string; website: string };
+const EMPTY: Form = { name: '', mobile: '', email: '', eventType: '', otherEventType: '', guests: '150', eventDate: '', website: '' };
 type Errors = Partial<Record<keyof Form, string>>;
 
 /**
@@ -31,8 +31,6 @@ export function Enquiry({ slug }: { slug: string }) {
   const set = (k: keyof Form, v: string) => { setForm((f) => ({ ...f, [k]: v })); if (errors[k]) setErrors((e) => ({ ...e, [k]: undefined })); };
 
   const data = info.data;
-  const branches = data?.branches ?? [];
-  const multi = branches.length > 1;
   const dates = parseEventDates(form.eventDate);
   const slotsForDates: EventSlots = Object.fromEntries(dates.map((d) => [d, normalizeRange(slots[d])]));
 
@@ -69,7 +67,7 @@ export function Enquiry({ slug }: { slug: string }) {
         name: form.name.trim(), mobile: form.mobile.trim(), email: form.email.trim(),
         eventType: form.eventType === 'Other' ? form.otherEventType.trim() : form.eventType,
         guests: Number(form.guests), dates, slots: slotOut,
-        branchId: multi ? form.branchId || branches[0]?.id : undefined, website: form.website,
+        website: form.website,
       },
       { onSuccess: (r) => setSent({ reference: r.reference, name: form.name.trim() }), onError: (err) => setProblem(err.message) },
     );
@@ -93,7 +91,9 @@ export function Enquiry({ slug }: { slug: string }) {
 
   const header = (
     <div className="mb-6 text-center">
-      <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-gold/15 text-xl font-semibold text-gold">{(data.name || '?').trim().charAt(0).toUpperCase()}</span>
+      {data.logo
+        ? <img src={data.logo} alt={data.name} className="mx-auto max-h-24 max-w-[220px] object-contain" draggable={false} />
+        : <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-gold/15 text-xl font-semibold text-gold">{(data.name || '?').trim().charAt(0).toUpperCase()}</span>}
       <h1 className="mt-4 font-display text-3xl font-semibold leading-tight text-text">{data.name}</h1>
       <p className="mt-1.5 text-sm text-text-secondary">Tell us about your event and we will call you back with a quotation.</p>
     </div>
@@ -130,13 +130,9 @@ export function Enquiry({ slug }: { slug: string }) {
           <Field label="Event type" required error={errors.eventType}>
             <Select value={form.eventType} onChange={(e) => set('eventType', e.target.value)}><option value="">Choose event type</option>{EVENT_TYPES.map((t) => <option key={t}>{t}</option>)}</Select>
           </Field>
-          {form.eventType === 'Other' ? <Field label="Occasion" required error={errors.otherEventType}><Input value={form.otherEventType} onChange={(e) => set('otherEventType', e.target.value)} placeholder="e.g. Baby shower" maxLength={50} /></Field> : <div className="hidden sm:block" />}
           <Field label="Number of guests" required error={errors.guests}><Input type="number" min={1} value={form.guests} onChange={(e) => set('guests', e.target.value)} inputMode="numeric" /></Field>
-          {multi && (
-            <Field label="Branch" hint="Where is your event?">
-              <Select value={form.branchId || branches[0]?.id} onChange={(e) => set('branchId', e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select>
-            </Field>
-          )}
+          {/* appears in the empty slot right beside Guests, so the order of the other fields never changes */}
+          {form.eventType === 'Other' && <Field label="Occasion" required error={errors.otherEventType}><Input value={form.otherEventType} onChange={(e) => set('otherEventType', e.target.value)} placeholder="e.g. Baby shower" maxLength={50} /></Field>}
           <Field as="div" label="Event date & time" required hint="Time is optional" className="sm:col-span-2">
             <DatePicker value={form.eventDate} slots={slots} booked={{}} error={errors.eventDate} onChange={(v) => set('eventDate', v)} onSlotsChange={setSlots} />
           </Field>

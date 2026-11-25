@@ -265,6 +265,6 @@ export type InvoiceSettings = InvoiceParty & { prefix: string; next: number; gst
 
 /* ------------------------------------------------------- Public enquiry link --- */
 /** What the public form (a customer opening the business's link) needs to know. Branches are only the active ones. */
-export type EnquiryInfo = { found: boolean; name: string; phone: string; open: boolean; branches: { id: string; name: string }[] };
+export type EnquiryInfo = { found: boolean; name: string; phone: string; /** the business logo (picture data) from Settings, if one was uploaded */ logo: string; open: boolean; branches: { id: string; name: string }[] };
 /** What a customer sends. Bill number, GST and PAN are deliberately not part of it. */
 export type EnquiryInput = { name: string; mobile: string; email: string; eventType: string; guests: number; dates: string[]; slots: EventSlots; branchId?: string; /** honeypot: must stay empty */ website?: string };

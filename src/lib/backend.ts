@@ -479,7 +479,7 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       const { data, error } = await client.rpc('enquiry_info', { p_slug: slug });
       if (error) throw new Error(/enquiry_info/.test(error.message) ? 'The enquiry link is not switched on yet. Run supabase/23-enquiry-link-drafts.sql once.' : error.message);
       const d = (data ?? {}) as Partial<EnquiryInfo>;
-      return { found: Boolean(d.found), name: d.name ?? '', phone: d.phone ?? '', open: d.open !== false, branches: Array.isArray(d.branches) ? d.branches : [] };
+      return { found: Boolean(d.found), name: d.name ?? '', phone: d.phone ?? '', logo: typeof d.logo === 'string' && d.logo.startsWith('data:image/') ? d.logo : '', open: d.open !== false, branches: Array.isArray(d.branches) ? d.branches : [] };
     },
     async submitEnquiry(slug, input) {
       const { data, error } = await client.rpc('submit_enquiry', { p_slug: slug, p: input });

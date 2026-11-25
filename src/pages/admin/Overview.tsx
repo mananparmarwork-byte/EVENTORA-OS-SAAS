@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { ArrowDownRight, ArrowUpRight, BarChart3, CalendarCheck, CalendarDays, FilePlus2, IndianRupee, LineChart, Plus, TrendingUp, Users, Wallet } from 'lucide-react';
-import { Button, Card, CardHeader, EmptyState, Select, Sparkline, Spinner } from '@/components/ui';
+import { Button, Card, CardHeader, CountText, EmptyState, PageSkeleton, Select, Sparkline, Spinner } from '@/components/ui';
 import { StatusBadge } from '@/components/PaymentBadge';
 import { RangePicker } from '@/components/RangePicker';
-import { BranchCompare } from '@/components/BranchCompare';
-import { useBranchScope } from '@/lib/branch';
 import { ActivityList } from '@/components/ActivityList';
 import { useActivitySettings, usePurgeActivity, useQuotes } from '@/lib/api';
 import { ACTIVITY_FILTERS, actorLabel, matchesFilter, type ActivityFilter } from '@/lib/activity';
@@ -25,13 +23,13 @@ function Delta({ value }: { value: number | null }) {
 
 function Kpi({ icon, label, value, note, series, color, change }: { icon: React.ReactNode; label: string; value: string; note?: string; series?: number[]; color?: string; change?: number | null }) {
   return (
-    <Card className="p-5">
+    <Card className="lift p-5">
       <div className="flex items-center justify-between gap-2">
-        <span className="grid size-10 place-items-center rounded-xl bg-surface-hover text-gold">{icon}</span>
+        <span className="grid size-10 place-items-center rounded-xl bg-gold/10 text-gold">{icon}</span>
         <span className="flex flex-col items-end gap-0.5 text-right">{change !== undefined && <Delta value={change} />}{note && <span className="text-[11px] text-text-secondary">{note}</span>}</span>
       </div>
       <p className="mt-4 text-xs text-text-secondary">{label}</p>
-      <p className="mt-1 text-[28px] font-semibold leading-none tracking-tight text-text tabular">{value}</p>
+      <p className="mt-1 text-[28px] font-semibold leading-none tracking-tight text-text tabular"><CountText value={value} /></p>
       {series && <div className="mt-3"><Sparkline values={series} color={color} /></div>}
     </Card>
   );
@@ -58,21 +56,21 @@ function TrendChart({ labels, values, kind, money, name }: { labels: string[]; v
   const bw = Math.max(2, Math.min(34, ((W - pl - pr) / n) * 0.62));
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="h-60 w-full" role="img" aria-label={`${name} over time`}>
-      <defs><linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#E6B84A" stopOpacity=".35" /><stop offset="1" stopColor="#E6B84A" stopOpacity="0" /></linearGradient></defs>
+      <defs><linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#3478F6" stopOpacity=".35" /><stop offset="1" stopColor="#3478F6" stopOpacity="0" /></linearGradient></defs>
       {ticks.map((t) => (
         <g key={t}>
-          <line x1={pl} x2={W - pr} y1={y(t)} y2={y(t)} stroke="#33415A" strokeDasharray="3 5" strokeWidth="1" />
-          <text x={pl - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="#8D9AB0">{fmtV(t)}</text>
+          <line x1={pl} x2={W - pr} y1={y(t)} y2={y(t)} stroke="#E5EAF1" strokeDasharray="3 5" strokeWidth="1" />
+          <text x={pl - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="#64748B">{fmtV(t)}</text>
         </g>
       ))}
       {kind === 'line' && n > 1 && <path d={`${line} L${x(n - 1)} ${H - pb} L${x(0)} ${H - pb} Z`} fill="url(#trend-fill)" />}
-      {kind === 'line' && <path d={line} fill="none" stroke="#E6B84A" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+      {kind === 'line' && <path d={line} fill="none" stroke="#3478F6" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
       {values.map((v, i) => (
         <g key={i}>
           {kind === 'bar'
-            ? <rect x={x(i) - bw / 2} y={y(v)} width={bw} height={Math.max(v > 0 ? 2 : 0, H - pb - y(v))} rx="3" fill="#E6B84A" opacity={v > 0 ? 0.95 : 0.25}><title>{`${labels[i]}: ${money ? inr(v) : v}`}</title></rect>
-            : <circle cx={x(i)} cy={y(v)} r={n > 40 ? 2.5 : 4} fill="#0D1424" stroke="#E6B84A" strokeWidth="2"><title>{`${labels[i]}: ${money ? inr(v) : v}`}</title></circle>}
-          {i % every === 0 && <text x={x(i)} y={H - 9} textAnchor="middle" fontSize="11" fill="#B8C2D4">{labels[i]}</text>}
+            ? <rect x={x(i) - bw / 2} y={y(v)} width={bw} height={Math.max(v > 0 ? 2 : 0, H - pb - y(v))} rx="3" fill="#3478F6" opacity={v > 0 ? 0.95 : 0.25}><title>{`${labels[i]}: ${money ? inr(v) : v}`}</title></rect>
+            : <circle cx={x(i)} cy={y(v)} r={n > 40 ? 2.5 : 4} fill="#FFFFFF" stroke="#3478F6" strokeWidth="2"><title>{`${labels[i]}: ${money ? inr(v) : v}`}</title></circle>}
+          {i % every === 0 && <text x={x(i)} y={H - 9} textAnchor="middle" fontSize="11" fill="#64748B">{labels[i]}</text>}
         </g>
       ))}
     </svg>
@@ -84,7 +82,6 @@ export function Overview() {
   const { entries, isLoading: feedLoading, retention } = useActivityFeed(true);
   const { activitySettings } = useActivitySettings(true);
   const purge = usePurgeActivity();
-  const { current: viewBranch, multi } = useBranchScope();
   const [range, setRange] = useState<RangeState>(() => loadRange('overview'));
   const [metric, setMetric] = useState<Metric>('revenue');
   const [kind, setKind] = useState<'line' | 'bar'>('line');
@@ -116,7 +113,7 @@ export function Overview() {
   const feed = useMemo(() => entries.filter((a) => inPeriod(a.at, r) && matchesFilter(a, filter) && (actor === 'all' || actorLabel(a) === actor)), [entries, r, filter, actor]);
   const existing = useMemo(() => new Set(quotes.map((q) => q.reference)), [quotes]);
 
-  if (isLoading) return <Spinner label="Loading your workspace" />;
+  if (isLoading) return <PageSkeleton label="Loading your workspace" />;
   if (error) return <Card className="p-8 text-center text-sm text-error">Could not load data: {(error as Error).message}</Card>;
 
   const booked = quotes.filter((q) => q.status === 'confirmed');
@@ -130,7 +127,7 @@ export function Overview() {
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <h2 className="font-display text-3xl font-semibold text-text">{greeting()}</h2>
-          <p className="mt-1 text-sm text-text-secondary">{multi ? (viewBranch ? `Showing ${viewBranch.name} only. Use the branch switcher at the top to change.` : 'Showing all branches combined.') : 'Here is your venue performance at a glance.'}</p>
+          <p className="mt-1 text-sm text-text-secondary">Here is your venue performance at a glance.</p>
         </div>
         <div className="flex gap-3">
           <Link href="/admin/new"><Button variant="gold"><Plus size={16} /> New Booking</Button></Link>
@@ -143,11 +140,9 @@ export function Overview() {
         <RangePicker value={range} onChange={changeRange} earliest={earliestDate(quotes)} />
       </Card>
 
-      <BranchCompare period={r} />
-
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi icon={<Users size={19} />} label="Total quotations" value={String(now.quotations)} series={qs} change={delta(now.quotations, before.quotations)} note="vs previous period" />
-        <Kpi icon={<CalendarCheck size={19} />} label="Booked events" value={String(now.booked)} series={bk} color="#4F9B73" change={delta(now.booked, before.booked)} note={`${next30} in next 30 days`} />
+        <Kpi icon={<CalendarCheck size={19} />} label="Booked events" value={String(now.booked)} series={bk} color="#16A36A" change={delta(now.booked, before.booked)} note={`${next30} in next 30 days`} />
         <Kpi icon={<IndianRupee size={19} />} label="Revenue collected" value={inrCompact(now.revenue)} series={rev} change={delta(now.revenue, before.revenue)} note="vs previous period" />
         <Kpi icon={<Wallet size={19} />} label="Outstanding balance" value={inrCompact(outstanding)} note="on all booked events, today" />
       </div>

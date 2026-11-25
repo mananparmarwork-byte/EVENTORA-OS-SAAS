@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { qrDataUrl } from '@/lib/qr';
 import { buildUpiUri, isValidUpiId } from '@/lib/settings';
 import { quoteAdvance } from '@/lib/pricing';
-import type { BusinessProfile, Invoice, PaymentSettings, Quote } from '@/lib/types';
+import type { BusinessProfile, PaymentSettings, Quote } from '@/lib/types';
 import type { BillKind } from './BillDocument';
 
 // The PDF engine is large, so it is only downloaded the first time someone actually creates a PDF.
@@ -26,13 +26,6 @@ export async function buildReportBlob(title: string, quotes: Quote[], business: 
   const { ReportDocument } = await import('./ReportDocument');
   return render(createElement(ReportDocument, { title, quotes, business }));
 }
-
-export async function buildInvoiceBlob(invoice: Invoice): Promise<Blob> {
-  const { InvoiceDocument } = await import('./InvoiceDocument');
-  return render(createElement(InvoiceDocument, { invoice }));
-}
-
-export const invoiceFileName = (i: Invoice) => `invoice-${i.number.replace(/[^A-Za-z0-9-]/g, '')}.pdf`;
 
 export function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);

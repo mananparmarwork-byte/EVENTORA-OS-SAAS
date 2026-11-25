@@ -5,34 +5,38 @@ import { cn } from '@/lib/format';
 /* ---------------------------------------------------------------- Buttons --- */
 type Variant = 'gold' | 'outline' | 'ghost' | 'danger' | 'soft';
 const VARIANTS: Record<Variant, string> = {
-  gold: 'bg-gold text-text-on-gold hover:bg-gold-hover font-semibold shadow-[0_6px_18px_rgba(230,184,74,.18)]',
-  outline: 'border border-border bg-transparent text-text hover:bg-surface-hover hover:border-steel-blue',
+  gold: 'bg-gold text-text-on-gold hover:bg-gold-hover font-semibold shadow-[0_4px_14px_rgba(52,120,246,.28)] hover:shadow-[0_6px_18px_rgba(52,120,246,.34)]',
+  outline: 'border border-border bg-surface text-text hover:bg-surface-hover hover:border-steel-blue',
   soft: 'bg-surface-hover text-text hover:bg-border',
   ghost: 'bg-transparent text-text-secondary hover:bg-surface-hover hover:text-text',
-  danger: 'border border-error/40 bg-error-bg text-error hover:bg-error/20',
+  danger: 'border border-error/30 bg-error-bg text-error hover:bg-error/15',
 };
-export function Button({ variant = 'outline', size = 'md', className, children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'sm' | 'md' | 'lg' }) {
+/** `loading` shows a small spinner and blocks double clicks. */
+export function Button({ variant = 'outline', size = 'md', className, children, loading, disabled, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'sm' | 'md' | 'lg'; loading?: boolean }) {
   const sizes = { sm: 'h-8 px-3 text-xs', md: 'h-10 px-4 text-sm', lg: 'h-12 px-6 text-sm' };
   return (
     <button
       type="button"
       {...rest}
-      className={cn('inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors disabled:pointer-events-none disabled:opacity-50', sizes[size], VARIANTS[variant], className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      className={cn('inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-150 active:scale-[.98] disabled:pointer-events-none disabled:opacity-50', sizes[size], VARIANTS[variant], className)}
     >
+      {loading && <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />}
       {children}
     </button>
   );
 }
 
 /* ------------------------------------------------------------------ Fields --- */
-const control = 'rounded-xl border border-border bg-input px-3.5 text-sm text-text transition-colors hover:border-steel-blue/70 focus:border-gold focus:outline-none disabled:opacity-50';
+const control = 'rounded-xl border border-border bg-input px-3.5 text-sm text-text transition-all duration-150 hover:border-steel-blue focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/10 disabled:opacity-50';
 /** Default width / height only when the caller did not choose their own (two competing Tailwind classes would be decided by stylesheet order, not by us). */
 const sized = (className: string | undefined, h = 'h-11') => cn(/(^|\s)w-/.test(className ?? '') ? '' : 'w-full', /(^|\s)h-/.test(className ?? '') ? '' : h);
 export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...rest} className={cn(control, sized(className), className)} />;
 }
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...rest} className={cn(control, sized(className), 'appearance-none bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-9', className)} style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23B8C2D4' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }}>{children}</select>;
+  return <select {...rest} className={cn(control, sized(className), 'appearance-none bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-9', className)} style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }}>{children}</select>;
 }
 export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...rest} className={cn(control, 'w-full min-h-24 py-3', className)} />;
@@ -61,7 +65,7 @@ export function Switch({ checked, onChange, label, description, disabled }: { ch
       )}
       <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
         className={cn('relative h-6 w-11 shrink-0 rounded-full border transition-colors', checked ? 'border-gold bg-gold' : 'border-border bg-input')}>
-        <span className={cn('absolute top-0.5 size-5 rounded-full transition-all', checked ? 'left-[22px] bg-obsidian' : 'left-0.5 bg-text-secondary')} />
+        <span className={cn('absolute top-0.5 size-5 rounded-full transition-all duration-200', checked ? 'left-[22px] bg-white shadow' : 'left-0.5 bg-text-disabled')} />
       </button>
     </label>
   );
@@ -107,12 +111,54 @@ export function EmptyState({ icon, title, text, action }: { icon: ReactNode; tit
   );
 }
 
+/** Shimmering placeholder block. */
+export function Skeleton({ className }: { className?: string }) {
+  return <div aria-hidden="true" className={cn('skeleton rounded-lg', className)} />;
+}
+/** Compact loading placeholder (lists, tables, modals). The old spinner name is kept so every screen gets it. */
 export function Spinner({ label = 'Loading' }: { label?: string }) {
   return (
-    <div role="status" className="flex items-center justify-center gap-3 py-16 text-sm text-text-secondary">
-      <span className="size-5 animate-spin rounded-full border-2 border-border border-t-gold" />{label}…
+    <div role="status" aria-live="polite" className="space-y-3 px-5 py-6">
+      <span className="sr-only">{label}…</span>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-center gap-3"><Skeleton className="size-10 shrink-0 rounded-xl" /><div className="min-w-0 flex-1 space-y-2"><Skeleton className="h-3.5 w-2/3" /><Skeleton className="h-3 w-1/3" /></div><Skeleton className="h-4 w-16" /></div>
+      ))}
     </div>
   );
+}
+/** Full-page placeholder: header, four KPI cards and a chart. Used instead of a blank screen. */
+export function PageSkeleton({ label = 'Loading' }: { label?: string }) {
+  return (
+    <div role="status" aria-live="polite" className="space-y-6">
+      <span className="sr-only">{label}…</span>
+      <div className="flex items-end justify-between gap-4"><div className="space-y-2"><Skeleton className="h-8 w-64" /><Skeleton className="h-4 w-48" /></div><Skeleton className="h-10 w-36 rounded-xl" /></div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <Card key={i} className="space-y-4 p-5"><Skeleton className="size-10 rounded-xl" /><Skeleton className="h-3 w-24" /><Skeleton className="h-7 w-32" /><Skeleton className="h-9 w-full" /></Card>)}</div>
+      <div className="grid gap-6 xl:grid-cols-3"><Card className="space-y-4 p-5 xl:col-span-2"><Skeleton className="h-5 w-40" /><Skeleton className="h-56 w-full" /></Card><Card className="p-1"><Spinner label={label} /></Card></div>
+    </div>
+  );
+}
+
+/** Counts a number up when it first appears ("₹1,25,000", "42", "₹1.2L" all work). Honors reduced-motion. */
+export function CountText({ value, duration = 700 }: { value: string; duration?: number }) {
+  const [text, setText] = useState(value);
+  useEffect(() => {
+    const m = /\d[\d,]*\.?\d*/.exec(value);
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (!m || reduce) { setText(value); return; }
+    const target = Number(m[0].replace(/,/g, ''));
+    if (!Number.isFinite(target) || target === 0) { setText(value); return; }
+    const decimals = (m[0].split('.')[1] ?? '').length, grouped = m[0].includes(',');
+    const fmt = (n: number) => (grouped ? n.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : n.toFixed(decimals));
+    let raf = 0; const t0 = performance.now();
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - t0) / duration), eased = 1 - Math.pow(1 - k, 3);
+      setText(k >= 1 ? value : value.replace(m[0], fmt(target * eased)));
+      if (k < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return <>{text}</>;
 }
 
 /* ------------------------------------------------------------------- Modal --- */
@@ -125,8 +171,8 @@ export function Modal({ title, eyebrow, onClose, children, width = 'max-w-xl', f
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-obsidian/70 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-label={title} className={cn('fade-up flex max-h-[92dvh] w-full flex-col rounded-t-3xl border border-border bg-surface shadow-2xl sm:rounded-3xl', width)}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-obsidian/50 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={cn('pop-in flex max-h-[92dvh] w-full flex-col rounded-t-3xl border border-border bg-surface shadow-2xl sm:rounded-3xl', width)}>
         <div className="flex items-start justify-between gap-4 border-b border-border/70 px-6 py-5">
           <div>
             {eyebrow && <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold">{eyebrow}</p>}
@@ -167,7 +213,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className="fade-up pointer-events-auto flex items-start gap-3 rounded-xl border border-border bg-surface-hover px-4 py-3 text-sm shadow-2xl">
+          <div key={t.id} className={`toast-in pointer-events-auto flex items-start gap-3 rounded-xl border border-border border-l-4 bg-surface px-4 py-3 text-sm shadow-[0_12px_32px_rgba(16,29,53,.16)] ${t.kind === 'success' ? 'border-l-success' : t.kind === 'error' ? 'border-l-error' : 'border-l-info'}`}>
             {icon[t.kind]}<span className="min-w-0 flex-1 text-text">{t.text}</span>
           </div>
         ))}
@@ -192,7 +238,7 @@ export function useUi() {
 
 /* ------------------------------------------------------------------ Charts --- */
 /** Small trend line used on KPI cards. */
-export function Sparkline({ values, color = '#E6B84A', height = 34 }: { values: number[]; color?: string; height?: number }) {
+export function Sparkline({ values, color = '#3478F6', height = 34 }: { values: number[]; color?: string; height?: number }) {
   const w = 120;
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);

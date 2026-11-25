@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, Redirect, useLocation } from 'wouter';
-import { AlertTriangle, BarChart3, Bell, Building2, CalendarDays, CreditCard, ChevronsLeft, ChevronsRight, FileClock, FilePlus2, FileText, Layers, LayoutDashboard, LogOut, Menu, Plus, Settings, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Building2, CalendarDays, CreditCard, ChevronRight, ChevronsLeft, ChevronsRight, FileClock, FilePlus2, FileText, Layers, LayoutDashboard, LogOut, Menu, Plus, Settings, ShieldCheck, X } from 'lucide-react';
 import { Brand } from '@/components/Logo';
-import { BranchSwitcher } from '@/components/BranchSwitcher';
-import { NotificationBell } from '@/components/NotificationBell';
-import { useInboxCounts, useNotifications } from '@/lib/apiExt';
-import { useBranchScope } from '@/lib/branch';
-import { Button, Spinner, useUi } from '@/components/ui';
+import { BrandedLoader, CommandSearch, NotificationsMenu, ProfileMenu, WELCOME_FLAG, WelcomeSplash, friendlyName } from '@/components/Shell';
+import { Button, useUi } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { signOut, usePlans, useSession, useSubscription } from '@/lib/api';
 import { planName } from '@/lib/plans';
@@ -15,24 +12,25 @@ import { cn, initials } from '@/lib/format';
 
 // `owner: true` = only the owner sees it. Employees get: New bill, Bills (take payments), Calendar.
 const NAV = [
-  { href: '/admin', label: 'Overview', icon: LayoutDashboard, exact: true, owner: true },
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, owner: true },
   { href: '/admin/new', label: 'New bill', icon: FilePlus2, staffOnly: true },
   { href: '/admin/quotes', label: 'Quotations', staffLabel: 'Bills & payments', icon: FileText },
   { href: '/admin/calendar', label: 'Calendar', icon: CalendarDays },
   { href: '/admin/activity', label: 'Activity', icon: FileClock, owner: true },
   { href: '/admin/catalog', label: 'Catalog', icon: Layers, owner: true },
   { href: '/admin/reports', label: 'Reports', icon: BarChart3, owner: true },
-  { href: '/admin/branches', label: 'Branches', icon: Building2, owner: true },
-  { href: '/admin/messages', label: 'Messages', icon: Bell, owner: true },
   { href: '/admin/billing', label: 'Billing', icon: CreditCard, owner: true },
   { href: '/admin/settings', label: 'Settings', icon: Settings, owner: true },
-  { href: '/admin/platform', label: 'Super admin', icon: ShieldCheck, platform: true },
+  { href: '/admin/platform', label: 'Super admin', icon: Building2, platform: true },
   { href: '/admin/account', label: 'My account', icon: ShieldCheck },
-] as { href: string; label: string; staffLabel?: string; icon: typeof Layers; exact?: boolean; owner?: boolean; staffOnly?: boolean; platform?: boolean }[];
+] as { href: string; label: string; group?: string; staffLabel?: string; icon: typeof Layers; exact?: boolean; owner?: boolean; staffOnly?: boolean; platform?: boolean }[];
+
+/** Items from this point down are shown under the "Management" heading. */
+const MANAGEMENT = new Set(['/admin/billing', '/admin/settings', '/admin/platform', '/admin/account']);
 
 const TITLES: [string, string][] = [
   ['/admin/new', 'New quotation'], ['/admin/edit', 'Edit quotation'], ['/admin/quotes', 'Quotations'], ['/admin/calendar', 'Calendar'], ['/admin/activity', 'Activity'],
-  ['/admin/catalog', 'Catalog'], ['/admin/billing', 'Billing & access'], ['/admin/branches', 'Branches'], ['/admin/messages', 'Messages'], ['/admin/account', 'My account'], ['/admin/platform', 'Super admin'], ['/admin/reports', 'Reports'], ['/admin/settings', 'Settings'], ['/admin', 'Overview'],
+  ['/admin/catalog', 'Catalog'], ['/admin/billing', 'Billing'], ['/admin/account', 'My account'], ['/admin/platform', 'Super admin: businesses, plans, coupons'], ['/admin/reports', 'Reports'], ['/admin/settings', 'Settings'], ['/admin', 'Dashboard'],
 ];
 
 const IDLE_MINUTES = 30;
@@ -61,7 +59,7 @@ function SubscriptionBanner({ isAdmin }: { isAdmin: boolean }) {
     <div className={`flex flex-wrap items-center gap-3 border-b px-4 py-2.5 text-sm sm:px-8 ${cls}`} role="status">
       <AlertTriangle size={16} className="shrink-0" />
       <span className="min-w-0 flex-1"><strong>{line.title}.</strong> {sub.writable ? '' : 'The software is locked. '}{isAdmin ? '' : 'Please ask the owner to renew.'}</span>
-      {isAdmin && <Link href="/admin/billing" className="rounded-lg bg-text/10 px-3 py-1 text-xs font-semibold hover:bg-text/20">{sub.status === 'trialing' && sub.writable ? 'See how to continue' : 'Renew now'}</Link>}
+      {isAdmin && <Link href="/admin/billing" className="rounded-lg bg-text/10 px-3 py-1 text-xs font-semibold hover:bg-text/20">{sub.status === 'trialing' && sub.writable ? 'Choose a plan' : 'Renew now'}</Link>}
     </div>
   );
 }
@@ -73,7 +71,7 @@ function LockScreen({ onSignOut }: { onSignOut: () => void }) {
       <div className="w-full max-w-md rounded-3xl border border-border bg-surface p-8 text-center card-glow">
         <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-error-bg text-error"><AlertTriangle size={26} /></span>
         <h1 className="mt-5 font-display text-2xl font-semibold text-text">Subscription ended</h1>
-        <p className="mt-2 text-sm text-text-secondary">Your business&apos;s access has ended, so Eventora is switched off for now. Please ask the owner to renew it. Nothing has been lost.</p>
+        <p className="mt-2 text-sm text-text-secondary">Your business&apos;s plan has ended, so Eventora is switched off for now. Please ask the owner to renew it. Nothing has been lost.</p>
         <button type="button" onClick={onSignOut} className="mt-6 w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-text hover:bg-surface-hover">Sign out</button>
       </div>
     </main>
@@ -110,57 +108,60 @@ export function AdminLayout({ children, ownerOnly = false, platformOnly = false 
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawer, setDrawer] = useState(false);
   const { toast } = useUi();
-  const { feed } = useNotifications(Boolean(session) && isAdmin);
-  const { data: inbox } = useInboxCounts(Boolean(session?.platform));
-  useBranchScope(Boolean(session));
+  const [welcome, setWelcome] = useState(() => { try { const v = window.sessionStorage.getItem(WELCOME_FLAG) === '1'; if (v) window.sessionStorage.removeItem(WELCOME_FLAG); return v; } catch { return false; } });
   const idleOut = useCallback(() => { void signOut().finally(() => { qc.clear(); toast('You were signed out after 30 minutes without activity.', 'info'); navigate('/login'); }); }, [navigate, toast, qc]);
   useIdleSignOut(Boolean(session), idleOut);
 
   useEffect(() => { setDrawer(false); window.scrollTo({ top: 0 }); }, [location]);
   const toggle = () => setCollapsed((c) => { try { window.localStorage.setItem('eventora-sidebar', c ? '0' : '1'); } catch { /* ignore */ } return !c; });
 
-  if (loading) return <div className="min-h-dvh bg-page"><Spinner label="Checking your session" /></div>;
+  if (loading) return <BrandedLoader label="Checking your session" />;
   if (!session) return <Redirect to="/login" />;
   // Plan or trial over: the owner can only open Billing (and the software-owner panel); employees are fully locked out.
   const locked = Boolean(sub && !sub.writable);
   const canUsePlatform = Boolean(session.platform) && location === '/admin/platform';
   if (locked && !isAdmin) return <LockScreen onSignOut={async () => { await signOut(); qc.clear(); navigate('/login'); }} />;
-  if (locked && isAdmin && location !== '/admin/billing' && location !== '/admin/account' && location !== '/admin/messages' && !canUsePlatform) return <Redirect to="/admin/billing" />;
+  if (locked && isAdmin && location !== '/admin/billing' && location !== '/admin/account' && !canUsePlatform) return <Redirect to="/admin/billing" />;
   if (platformOnly && !session.platform) return <PlatformDenied email={session.email} onSignOut={async () => { await signOut(); qc.clear(); navigate('/login'); }} />;
   if (ownerOnly && !isAdmin) return <Redirect to={isAdmin ? '/admin' : '/admin/new'} />;
-  const items = NAV.filter((i) => (i.platform ? Boolean(session.platform) : isAdmin ? !i.staffOnly : !i.owner)).filter((i) => !locked || i.href === '/admin/billing' || i.href === '/admin/account' || i.href === '/admin/messages' || i.platform);
+  const items = NAV.filter((i) => (i.platform ? Boolean(session.platform) : isAdmin ? !i.staffOnly : !i.owner)).filter((i) => !locked || i.href === '/admin/billing' || i.href === '/admin/account' || i.platform);
 
   const title = TITLES.find(([p]) => location.startsWith(p))?.[1] ?? 'Eventora OS';
+  const doSignOut = async () => { await signOut(); qc.clear(); toast('Signed out', 'info'); navigate('/login'); };
   const isActive = (item: (typeof NAV)[number]) => (item.exact ? location === item.href : location.startsWith(item.href));
 
   const sidebar = (compact: boolean) => (
-    <div className="flex h-full flex-col">
-      <div className={cn('flex h-[72px] items-center border-b border-border/60 px-5', compact && 'justify-center px-0')}><Brand collapsed={compact} /></div>
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main">
-        {items.map((item) => {
+    <div className="sidebar-dark flex h-full flex-col bg-sidebar">
+      <div className={cn('flex h-[72px] items-center border-b border-border px-5', compact && 'justify-center px-0')}><Brand collapsed={compact} onDark /></div>
+      <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Main">
+        {items.map((item, idx) => {
           const active = isActive(item);
           const Icon = item.icon;
+          const mgmt = MANAGEMENT.has(item.href);
+          const firstMgmt = mgmt && !MANAGEMENT.has(items[idx - 1]?.href ?? '');
           return (
-            <Link key={item.href} href={item.href} title={compact ? (!isAdmin && item.staffLabel) || item.label : undefined}
-              className={cn('group relative flex h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-medium transition-colors', compact && 'justify-center px-0',
-                active ? 'bg-gold/12 text-gold' : 'text-text-secondary hover:bg-surface hover:text-text')}>
-              {active && <span className="absolute left-0 top-2.5 h-6 w-[3px] rounded-r bg-gold" />}
-              <Icon size={19} className="shrink-0" />
-              {!compact && <span className="truncate">{(!isAdmin && item.staffLabel) || item.label}</span>}
-              {item.href === '/admin/messages' && feed.unread > 0 && <span className={cn('grid min-w-5 place-items-center rounded-full bg-gold px-1.5 text-[10px] font-bold text-text-on-gold', compact ? 'absolute right-1.5 top-1.5' : 'ml-auto')}>{feed.unread}</span>}
-              {item.platform && (inbox?.requests ?? 0) + (inbox?.leads ?? 0) > 0 && <span className={cn('grid min-w-5 place-items-center rounded-full bg-gold px-1.5 text-[10px] font-bold text-text-on-gold', compact ? 'absolute right-1.5 top-1.5' : 'ml-auto')}>{(inbox?.requests ?? 0) + (inbox?.leads ?? 0)}</span>}
-            </Link>
+            <div key={item.href}>
+              {firstMgmt && (compact ? <div className="my-3 h-px bg-border" /> : <p className="mb-1.5 mt-5 px-3.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-disabled">Management</p>)}
+              {idx === 0 && !compact && <p className="mb-1.5 px-3.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-disabled">Workspace</p>}
+              <Link href={item.href} title={compact ? (!isAdmin && item.staffLabel) || item.label : undefined}
+                className={cn('group relative mb-0.5 flex h-10 items-center gap-3 rounded-xl px-3.5 text-sm font-medium transition-all duration-150', compact && 'justify-center px-0',
+                  active ? 'bg-white/10 text-white' : 'text-text-secondary hover:bg-white/5 hover:text-white')}>
+                {active && <span className="absolute left-0 top-2 h-6 w-[3px] rounded-r bg-gold" />}
+                <Icon size={18} className={cn('shrink-0 transition-transform duration-150 group-hover:scale-110', active && 'text-gold')} />
+                {!compact && <span className="truncate">{(!isAdmin && item.staffLabel) || item.label}</span>}
+              </Link>
+            </div>
           );
         })}
       </nav>
-      <div className="border-t border-border/60 p-3">
+      <div className="border-t border-border p-3">
         <div className={cn('flex items-center gap-3 rounded-xl p-2', compact && 'justify-center')}>
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-gold/15 text-xs font-bold text-gold">{initials(session.email.split('@')[0])}</span>
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-gold/20 text-xs font-bold text-gold">{initials(friendlyName(session.email))}</span>
           {!compact && (
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-semibold text-text">{session.email}</p>
               <p className="truncate text-[10px] uppercase tracking-wide text-gold">{session.tenantName ? `${session.tenantName} · ` : ''}{isAdmin ? 'Owner' : 'Employee'}</p>
-              <button type="button" onClick={async () => { await signOut(); qc.clear(); toast('Signed out', 'info'); navigate('/login'); }} className="flex items-center gap-1 text-[11px] text-text-secondary hover:text-gold"><LogOut size={12} /> Sign out</button>
+              <button type="button" onClick={() => void doSignOut()} className="flex items-center gap-1 text-[11px] text-text-secondary transition-colors hover:text-white"><LogOut size={12} /> Sign out</button>
             </div>
           )}
         </div>
@@ -170,34 +171,37 @@ export function AdminLayout({ children, ownerOnly = false, platformOnly = false 
 
   return (
     <div className="min-h-dvh bg-page text-text">
+      {welcome && <WelcomeSplash name={friendlyName(session.email)} business={session.tenantName} onDone={() => setWelcome(false)} />}
       {/* desktop sidebar: 248px open, 76px collapsed */}
-      <aside className={cn('fixed inset-y-0 left-0 z-30 hidden border-r border-border/60 bg-sidebar transition-[width] duration-200 lg:block', collapsed ? 'w-[76px]' : 'w-[248px]')}>{sidebar(collapsed)}</aside>
+      <aside className={cn('fixed inset-y-0 left-0 z-30 hidden bg-sidebar transition-[width] duration-200 lg:block', collapsed ? 'w-[76px]' : 'w-[248px]')}>{sidebar(collapsed)}</aside>
       {/* mobile drawer */}
       {drawer && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-obsidian/70 backdrop-blur-sm" onClick={() => setDrawer(false)} />
-          <aside className="fade-up absolute inset-y-0 left-0 w-[260px] border-r border-border bg-sidebar">
-            <button type="button" aria-label="Close menu" onClick={() => setDrawer(false)} className="absolute right-3 top-5 text-text-secondary"><X size={20} /></button>
+          <div className="absolute inset-0 bg-obsidian/60 backdrop-blur-sm transition-opacity" onClick={() => setDrawer(false)} />
+          <aside className="drawer-in absolute inset-y-0 left-0 w-[272px] bg-sidebar shadow-2xl">
+            <button type="button" aria-label="Close menu" onClick={() => setDrawer(false)} className="absolute right-3 top-5 z-10 text-[#A5B4CF] hover:text-white"><X size={20} /></button>
             {sidebar(false)}
           </aside>
         </div>
       )}
 
       <div className={cn('transition-[padding] duration-200', collapsed ? 'lg:pl-[76px]' : 'lg:pl-[248px]')}>
-        <header className="sticky top-0 z-20 flex h-[72px] items-center gap-3 border-b border-border/60 bg-page/85 px-4 backdrop-blur-md sm:px-8">
-          <button type="button" aria-label="Open menu" onClick={() => setDrawer(true)} className="grid size-10 place-items-center rounded-xl text-text-secondary hover:bg-surface lg:hidden"><Menu size={20} /></button>
-          <button type="button" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={toggle} className="hidden size-10 place-items-center rounded-xl text-text-secondary hover:bg-surface hover:text-text lg:grid">
+        <header className="sticky top-0 z-20 flex h-[72px] items-center gap-2 border-b border-border bg-surface/85 px-4 backdrop-blur-md sm:gap-3 sm:px-8">
+          <button type="button" aria-label="Open menu" onClick={() => setDrawer(true)} className="grid size-10 place-items-center rounded-xl text-text-secondary transition-colors hover:bg-surface-hover lg:hidden"><Menu size={20} /></button>
+          <button type="button" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={toggle} className="hidden size-10 place-items-center rounded-xl text-text-secondary transition-colors hover:bg-surface-hover hover:text-text lg:grid">
             {collapsed ? <ChevronsRight size={19} /> : <ChevronsLeft size={19} />}
           </button>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate font-display text-xl font-semibold text-text">{title}</h1>
+            <nav aria-label="Breadcrumb" className="hidden items-center gap-1 text-[11px] text-text-disabled sm:flex"><span>{session.tenantName || 'Eventora OS'}</span><ChevronRight size={11} /><span className="text-text-secondary">{title}</span></nav>
+            <h1 className="truncate text-lg font-semibold leading-tight text-text sm:text-xl">{title}</h1>
           </div>
-          <BranchSwitcher />
-          {isAdmin && <NotificationBell />}
-          <Link href="/admin/new"><Button variant="gold" size="md"><Plus size={16} /> <span className="hidden sm:inline">New booking</span></Button></Link>
+          <CommandSearch items={items.map((i) => ({ href: i.href, label: (!isAdmin && i.staffLabel) || i.label, icon: i.icon }))} />
+          <NotificationsMenu isAdmin={isAdmin} />
+          <ProfileMenu email={session.email} role={isAdmin ? 'Owner' : 'Employee'} business={session.tenantName} isAdmin={isAdmin} onSignOut={() => void doSignOut()} />
+          <Link href="/admin/new" className="hidden sm:block"><Button variant="gold" size="md"><Plus size={16} /> New booking</Button></Link>
         </header>
         <SubscriptionBanner isAdmin={isAdmin} />
-        <main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 sm:py-8">{children}</main>
+        <main key={location} className="page-in mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 sm:py-8">{children}</main>
       </div>
     </div>
   );

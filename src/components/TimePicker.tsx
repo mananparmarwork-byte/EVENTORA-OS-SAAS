@@ -66,10 +66,10 @@ function Dial({ mode, hour12, minute, onPick, onDone }: { mode: Mode; hour12: nu
     >
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="pointer-events-none absolute inset-0" aria-hidden="true">
         {mode === 'minute' && Array.from({ length: 60 }, (_, i) => { const a = polar(i * 6, 119), b = polar(i * 6, i % 5 === 0 ? 112 : 115); return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#33415A" strokeWidth={i % 5 === 0 ? 1.5 : 1} />; })}
-        <line x1={C} y1={C} x2={tip.x} y2={tip.y} stroke="#E6B84A" strokeWidth="2" strokeLinecap="round" />
-        <circle cx={C} cy={C} r="4" fill="#E6B84A" />
-        <circle cx={tip.x} cy={tip.y} r="21" fill="#E6B84A" />
-        {offLabel && <circle cx={tip.x} cy={tip.y} r="3" fill="#080B12" />}
+        <line x1={C} y1={C} x2={tip.x} y2={tip.y} stroke="#3478F6" strokeWidth="2" strokeLinecap="round" />
+        <circle cx={C} cy={C} r="4" fill="#3478F6" />
+        <circle cx={tip.x} cy={tip.y} r="21" fill="#3478F6" />
+        {offLabel && <circle cx={tip.x} cy={tip.y} r="3" fill="#FFFFFF" />}
       </svg>
       {labels.map((n) => {
         const p = polar((mode === 'hour' ? n % 12 : n) * (mode === 'hour' ? 30 : 6), R_NUM);

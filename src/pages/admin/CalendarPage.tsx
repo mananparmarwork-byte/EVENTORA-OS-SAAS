@@ -11,7 +11,7 @@ import { quoteDates } from '@/lib/pricing';
 import type { Quote, TimeRange } from '@/lib/types';
 
 type Entry = { quote: Quote; range: TimeRange; timeKnown: boolean; booked: boolean };
-const STRIPE = { backgroundImage: 'repeating-linear-gradient(45deg,#647DA8,#647DA8 3px,#3c4d6b 3px,#3c4d6b 6px)' } as const;
+const STRIPE = { backgroundImage: 'repeating-linear-gradient(45deg,#C3D3EE,#C3D3EE 3px,#A6BDE3 3px,#A6BDE3 6px)' } as const;
 
 function DayBar({ list, tall = false }: { list: Entry[]; tall?: boolean }) {
   return (

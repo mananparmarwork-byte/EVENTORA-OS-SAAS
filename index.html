@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0B1733" />
+    <meta name="theme-color" content="#101D35" />
     <title>Eventora OS — Event & Banquet Operations</title>
     <meta name="description" content="Eventora OS: quotations, bookings, payments and professional billing for event venues." />
     <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%favicon-32.png" />
@@ -11,10 +11,20 @@
     <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- branded first-load screen: replaced as soon as the app starts -->
+      <div style="position:fixed;inset:0;display:grid;place-items:center;background:#101D35;font-family:Inter,system-ui,sans-serif">
+        <div style="text-align:center">
+          <img src="%BASE_URL%apple-touch-icon.png" width="64" height="64" alt="" style="border-radius:16px">
+          <div style="margin:22px auto 0;width:120px;height:3px;border-radius:3px;background:#243759;overflow:hidden"><div style="width:40%;height:100%;background:#3478F6;border-radius:3px;animation:bar-run 1.1s ease-in-out infinite"></div></div>
+          <p style="margin:14px 0 0;color:#A5B4CF;font-size:12px;letter-spacing:.08em">LOADING EVENTORA OS</p>
+        </div>
+      </div>
+      <style>@keyframes bar-run{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}</style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

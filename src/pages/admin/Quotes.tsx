@@ -4,7 +4,6 @@ import { ArrowLeft, CalendarCheck, Download, FileText, Loader2, MessageCircle, P
 import { Badge, Button, Card, CardHeader, EmptyState, Input, Spinner, useUi } from '@/components/ui';
 import { PaymentBadge, StatusBadge } from '@/components/PaymentBadge';
 import { PaymentPanel } from '@/components/PaymentPanel';
-import { ALL, branchName, useBranchScope } from '@/lib/branch';
 import { useBusiness, useDeleteQuote, usePayment, usePermissions, useQuote, useQuotes, useSession, useSetStatus } from '@/lib/api';
 import { fmtDate, formatEventDates, inr, num, cn } from '@/lib/format';
 import { durationText, findConflicts, scheduleLines, timeText } from '@/lib/booking';
@@ -21,9 +20,6 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 function QuoteList() {
   const { data: quotes = [], isLoading, error } = useQuotes();
-  const { branches, multi, scope } = useBranchScope();
-  /* a small branch label on each bill, only when the business has several branches and the owner is looking at all of them */
-  const branchTag = (id?: string) => (multi && scope === ALL ? branchName(branches, id) : '');
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
   const [, navigate] = useLocation();
@@ -72,7 +68,7 @@ function QuoteList() {
                   const p = quotePaymentState(q.pricing);
                   return (
                     <tr key={q.id} onClick={() => navigate(`/admin/quotes/${encodeURIComponent(q.reference)}`)} className="cursor-pointer border-b border-border/50 transition-colors last:border-0 hover:bg-surface-hover">
-                      <td className="px-5 py-3.5 font-mono text-xs font-semibold text-gold">{q.reference}{branchTag(q.branchId) && <span className="mt-0.5 block font-sans text-[10px] font-normal text-text-secondary">{branchTag(q.branchId)}</span>}</td>
+                      <td className="px-5 py-3.5 font-mono text-xs font-semibold text-gold">{q.reference}</td>
                       <td className="px-5 py-3.5"><p className="font-medium text-text">{q.customer.name}</p><p className="text-xs text-text-secondary">{q.customer.eventType} · {q.customer.guests} guests</p></td>
                       <td className="px-5 py-3.5 text-text-secondary">{formatEventDates(quoteDates(q.customer))}</td>
                       <td className="px-5 py-3.5 text-right font-semibold text-text tabular">{inr(q.pricing.grandTotal)}</td>
@@ -90,7 +86,7 @@ function QuoteList() {
               const p = quotePaymentState(q.pricing);
               return (
                 <li key={q.id}><Link href={`/admin/quotes/${encodeURIComponent(q.reference)}`} className="block space-y-2 px-5 py-4 hover:bg-surface-hover">
-                  <div className="flex items-start justify-between gap-3"><div><p className="font-medium text-text">{q.customer.name}{branchTag(q.branchId) && <span className="ml-2 text-[10px] font-normal text-text-secondary">{branchTag(q.branchId)}</span>}</p><p className="text-xs text-text-secondary">{q.reference} · {q.customer.eventType}</p></div><StatusBadge status={q.status} /></div>
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-medium text-text">{q.customer.name}</p><p className="text-xs text-text-secondary">{q.reference} · {q.customer.eventType}</p></div><StatusBadge status={q.status} /></div>
                   <div className="flex items-center justify-between text-xs text-text-secondary"><span>{formatEventDates(quoteDates(q.customer))}</span><span className="font-semibold text-text tabular">{inr(q.pricing.grandTotal)}</span></div>
                   <PaymentBadge state={p.state} />
                 </Link></li>
@@ -107,7 +103,7 @@ function Detail({ reference }: { reference: string }) {
   const { toast, confirm } = useUi();
   const [, navigate] = useLocation();
   const { data: quote, isLoading } = useQuote(reference);
-  const { data: all = [] } = useQuotes({ all: true });
+  const { data: all = [] } = useQuotes();
   const { business } = useBusiness();
   const { payment } = usePayment();
   const setStatus = useSetStatus();
@@ -131,7 +127,7 @@ function Detail({ reference }: { reference: string }) {
 
   const toggleBooked = async () => {
     if (!booked) {
-      const others = all.filter((o) => o.status === 'confirmed' && o.branchId === quote.branchId).map((o) => ({ reference: o.reference, name: o.customer.name, dates: quoteDates(o.customer), slots: o.customer.eventSlots }));
+      const others = all.filter((o) => o.status === 'confirmed').map((o) => ({ reference: o.reference, name: o.customer.name, dates: quoteDates(o.customer), slots: o.customer.eventSlots }));
       const conflicts = findConflicts({ reference: quote.reference, dates, slots: customer.eventSlots }, others);
       if (conflicts.length) { toast(`Cannot book: ${formatEventDates([conflicts[0].date])} ${timeText(conflicts[0].range)} is already taken by ${conflicts[0].name} (${conflicts[0].reference}).`, 'error'); return; }
     }

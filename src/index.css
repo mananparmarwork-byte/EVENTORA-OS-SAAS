@@ -1,36 +1,37 @@
 @import "tailwindcss";
 
-/* Eventora OS — Midnight Luxury Theme */
+/* Eventora OS — Premium Midnight Navy + Electric Blue
+   Token names are kept from the earlier theme so every page re-themes at once ("gold" now means Electric Blue). */
 @theme {
-  --color-brand: #0B1733;
-  --color-obsidian: #080B12;
-  --color-gold: #E6B84A;
-  --color-gold-hover: #F0C966;
-  --color-ivory: #F7F5EF;
-  --color-steel-blue: #647DA8;
+  --color-brand: #101D35;
+  --color-obsidian: #101D35;
+  --color-gold: #3478F6;
+  --color-gold-hover: #2A66DB;
+  --color-ivory: #F5F7FB;
+  --color-steel-blue: #9FB3D1;
 
-  --color-page: #0D1424;
-  --color-sidebar: #0B1733;
-  --color-surface: #18243A;
-  --color-surface-hover: #22314A;
-  --color-input: #080B12;
-  --color-border: #33415A;
+  --color-page: #F5F7FB;
+  --color-sidebar: #101D35;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #F1F4F9;
+  --color-input: #FFFFFF;
+  --color-border: #E5EAF1;
 
-  --color-text: #F7F5EF;
-  --color-text-secondary: #B8C2D4;
-  --color-text-disabled: #8D9AB0;
-  --color-text-on-gold: #080B12;
+  --color-text: #172B4D;
+  --color-text-secondary: #64748B;
+  --color-text-disabled: #7C8BA1;
+  --color-text-on-gold: #FFFFFF;
 
-  --color-success: #4F9B73;
-  --color-warning: #E9AE45;
-  --color-error: #D66B70;
-  --color-info: #8CA9D6;
-  --color-success-bg: #183B2A;
-  --color-warning-bg: #493719;
-  --color-error-bg: #482329;
+  --color-success: #16A36A;
+  --color-warning: #E9A23B;
+  --color-error: #DC4545;
+  --color-info: #3478F6;
+  --color-success-bg: #E7F6EF;
+  --color-warning-bg: #FDF3E0;
+  --color-error-bg: #FDECEC;
 
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-display: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 html, body, #root { height: 100%; }
@@ -41,20 +42,63 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+h1, h2, h3, .font-display { letter-spacing: -0.015em; }
 * { border-color: var(--color-border); }
-::selection { background: rgba(230, 184, 74, 0.35); }
+::selection { background: rgba(52, 120, 246, 0.22); }
 :focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
-input[type="date"], input[type="time"] { color-scheme: dark; }
+input[type="date"], input[type="time"] { color-scheme: light; }
 input::placeholder, textarea::placeholder { color: var(--color-text-disabled); }
-select option { background: #18243A; color: #F7F5EF; }
-
-/* thin dark scrollbars */
-* { scrollbar-width: thin; scrollbar-color: #33415A transparent; }
+select option { background: #FFFFFF; color: #172B4D; }
+* { scrollbar-width: thin; scrollbar-color: #CBD5E3 transparent; }
 
 .tabular { font-variant-numeric: tabular-nums; }
-.gold-rule { height: 1px; background: linear-gradient(90deg, transparent, rgba(230,184,74,.55), transparent); }
-.card-glow { box-shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 18px 40px rgba(0,0,0,.28); }
+.gold-rule { height: 1px; background: linear-gradient(90deg, transparent, rgba(52,120,246,.45), transparent); }
+.card-glow { box-shadow: 0 1px 2px rgba(16,29,53,.04), 0 6px 18px rgba(16,29,53,.04); }
+.lift { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.lift:hover { transform: translateY(-2px); border-color: rgba(52,120,246,.35); box-shadow: 0 10px 28px rgba(16,29,53,.09); }
 
-@keyframes fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.fade-up { animation: fade-up .3s ease both; }
-@media (prefers-reduced-motion: reduce) { .fade-up { animation: none; } }
+/* The navy sidebar re-defines the colour tokens for everything inside it, so the same classes work on dark. */
+.sidebar-dark {
+  --color-text: #EAF0FB;
+  --color-text-secondary: #A5B4CF;
+  --color-text-disabled: #7C8CAB;
+  --color-surface: #1D2D4B;
+  --color-surface-hover: #243759;
+  --color-border: #2A3C5E;
+  --color-gold: #6AA2FF;
+  color: var(--color-text);
+}
+
+/* ------------------------------------------------------------------ motion --- */
+@keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes drop-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+@keyframes logo-in { from { opacity: 0; transform: scale(.82); } to { opacity: 1; transform: none; } }
+@keyframes breathe { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: .85; } }
+@keyframes splash-out { to { opacity: 0; visibility: hidden; } }
+@keyframes bar-run { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+
+.fade-up { animation: fade-up .32s cubic-bezier(.2,.7,.2,1) both; }
+.page-in { animation: fade-up .38s cubic-bezier(.2,.7,.2,1) both; }
+.pop-in { animation: pop-in .22s cubic-bezier(.2,.7,.2,1) both; }
+.toast-in { animation: toast-in .25s cubic-bezier(.2,.7,.2,1) both; }
+.drop-in { animation: drop-in .16s ease-out both; transform-origin: top right; }
+.logo-in { animation: logo-in .6s cubic-bezier(.2,.7,.2,1) both; }
+.breathe { animation: breathe 1.8s ease-in-out infinite; }
+
+/* skeleton shimmer */
+.skeleton { position: relative; overflow: hidden; background: #E9EEF5; }
+.skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation: shimmer 1.4s infinite; }
+.sidebar-dark .skeleton { background: #243759; }
+.sidebar-dark .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); }
+
+/* respect the "reduce motion" setting */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  .skeleton::after { display: none; }
+}
+
+@keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
+.drawer-in { animation: drawer-in .24s cubic-bezier(.2,.7,.2,1) both; }

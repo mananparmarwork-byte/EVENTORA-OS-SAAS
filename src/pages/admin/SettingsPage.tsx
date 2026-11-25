@@ -78,7 +78,7 @@ export function SettingsPage() {
             <CardHeader title="Business profile" subtitle="Printed in the header of every quotation and invoice" />
             <div className="grid gap-4 p-5 sm:grid-cols-2">
               <div className="sm:col-span-2 flex items-center gap-4 rounded-xl border border-border bg-input/50 p-4">
-                <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-brand">{b.logo ? <img src={b.logo} alt="Logo" className="size-full object-contain" /> : <span className="text-xs text-text-disabled">No logo</span>}</span>
+                <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl border border-border bg-surface-hover">{b.logo ? <img src={b.logo} alt="Logo" className="size-full object-contain" /> : <span className="text-xs text-text-disabled">No logo</span>}</span>
                 <div className="min-w-0 flex-1"><p className="text-sm font-medium text-text">Business logo</p><p className="text-xs text-text-secondary">PNG or JPG, printed in the bill header. Resized automatically.</p></div>
                 <label className="cursor-pointer rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-text hover:bg-surface-hover">Upload<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickLogo(f); e.target.value = ''; }} /></label>
                 {b.logo && <Button variant="ghost" size="sm" onClick={() => bs('logo', undefined)}>Remove</Button>}

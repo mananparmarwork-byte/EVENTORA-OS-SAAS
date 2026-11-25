@@ -3,9 +3,8 @@ import { cloneCatalog, DEFAULT_CATALOG } from './catalog';
 import { normalizeEventSlots, occupancyEntries } from './booking';
 import { computeTotals, lineTotal, quoteAdvance } from './pricing';
 import { newId } from './settings';
-import { makeSaasExt, unsupportedExt, type SaasExt } from './backendExt';
 import { localISODate } from './format';
-import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck, type PurchaseStatus, type NewPurchase, type PlatformDashboard, type SubRow, type TenantPayment } from './types';
+import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck, type PurchaseStatus, type NewPurchase, type PlatformDashboard, type SubRow, type TenantPayment, type CollectionRow, type CollectedPayment, type FollowUp, type ReminderResult } from './types';
 
 /**
  * Every screen talks to the database ONLY through this interface.
@@ -16,7 +15,7 @@ import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quot
  */
 export type { Session };
 
-export interface Backend extends SaasExt {
+export interface Backend {
   mode: 'supabase' | 'api';
   getCatalog(): Promise<CatalogCategory[]>;
   saveCatalog(catalog: CatalogCategory[]): Promise<void>;
@@ -56,19 +55,25 @@ export interface Backend extends SaasExt {
   platformSetNote(tenantId: string, note: string): Promise<void>;
   platformTenantPayments(tenantId: string): Promise<TenantPayment[]>;
   platformDeletePlan(period: BillingPeriod): Promise<void>;
+  platformCollections(): Promise<CollectionRow[]>;
+  platformCollected(fromISO: string | null, toISO: string | null): Promise<CollectedPayment[]>;
+  platformRecordCollection(v: { tenantId: string; period: BillingPeriod | null; amountRupees: number; paidOn: string; method: string; note: string }): Promise<string>;
+  platformLogFollowup(v: { tenantId: string; action: 'email' | 'whatsapp' | 'copy' | 'call' | 'note'; note: string; promiseDate: string | null }): Promise<void>;
+  platformFollowups(tenantId: string): Promise<FollowUp[]>;
+  platformSetPhone(tenantId: string, phone: string): Promise<void>;
+  platformSendReminders(tenantIds: string[], note: string): Promise<ReminderResult>;
   platformListCoupons(): Promise<Coupon[]>;
   platformSaveCoupon(c: Coupon): Promise<void>;
   listTenants(): Promise<TenantRow[]>;
   platformSetSubscription(tenantId: string, status: SubStatus | null, extendDays: number): Promise<void>;
   listStaff(): Promise<StaffMember[]>;
   setStaffActive(id: string, active: boolean): Promise<void>;
-  createStaff(email: string, password: string, branchId?: string): Promise<void>;
+  createStaff(email: string, password: string): Promise<void>;
   updateQuote(reference: string, input: QuoteInput): Promise<void>;
   updatePricing(reference: string, pricing: QuotePricing): Promise<void>;
   setStatus(reference: string, status: QuoteStatus): Promise<void>;
   deleteQuote(reference: string): Promise<void>;
-  /** Booked times of ONE branch (an employee always gets their own branch; the owner passes the branch of the bill). */
-  bookedTimes(branchId?: string): Promise<Record<string, TimeRange[]>>;
+  bookedTimes(): Promise<Record<string, TimeRange[]>>;
   getSettings(key: string): Promise<unknown | null>;
   saveSettings(key: string, data: unknown): Promise<void>;
   getSession(): Promise<Session>;
@@ -107,7 +112,7 @@ export class MfaRequiredError extends Error {
 type QuoteRow = {
   id: string; reference: string; customer_name: string; mobile: string; event_type: string; event_date: string;
   guests: number; customer_gst_number: string | null; hall: string; services: QuoteService[]; pricing: QuotePricing;
-  status: QuoteStatus; created_at: string; branch_id?: string | null;
+  status: QuoteStatus; created_at: string;
 };
 
 function fromRow(row: QuoteRow): Quote {
@@ -127,7 +132,6 @@ function fromRow(row: QuoteRow): Quote {
     },
     status: row.status,
     createdAt: row.created_at,
-    branchId: row.branch_id ?? undefined,
   };
 }
 
@@ -144,10 +148,10 @@ const toRow = (input: QuoteInput) => ({
   pricing: { ...input.pricing, eventDates: input.customer.eventDates ?? [input.customer.eventDate], eventSlots: input.customer.eventSlots ?? {} },
 });
 
-type ActivityRow = { branch_id?: string | null; id: string; at: string; actor_email: string | null; actor_role: string | null; action: ActivityEntry['action']; reference: string | null; title: string; detail: string | null; data: ActivityEntry['data'] | null };
+type ActivityRow = { id: string; at: string; actor_email: string | null; actor_role: string | null; action: ActivityEntry['action']; reference: string | null; title: string; detail: string | null; data: ActivityEntry['data'] | null };
 const fromActivityRow = (r: ActivityRow): ActivityEntry => ({
   id: r.id, at: r.at, actorEmail: r.actor_email ?? '', actorRole: (r.actor_role as ActivityEntry['actorRole']) ?? 'system', action: r.action,
-  reference: r.reference ?? '', title: r.title, detail: r.detail ?? '', data: r.data ?? {}, branchId: r.branch_id ?? undefined,
+  reference: r.reference ?? '', title: r.title, detail: r.detail ?? '', data: r.data ?? {},
 });
 
 const NOT_ALLOWED = 'The database did not allow this change. If your free trial or subscription has ended, renew it in Billing; otherwise run the latest SQL files.';
@@ -213,7 +217,7 @@ async function finishSignIn(client: SupabaseClient, email: string): Promise<NonN
     await client.auth.signOut();
     if (c.problem) throw new Error(`Signed in, but the database could not confirm your account: ${c.problem}. Run the latest SQL files.`);
     if (/confirm your email/i.test(claimed.claimError)) throw new Error(claimed.claimError);
-    throw new Error('This login has no business yet, or it was switched off. Eventora accounts are created by the Eventora team: contact us to get access. Employees: ask your owner.');
+    throw new Error('This login has no business yet, or it was switched off. If you paid, sign in with the email you paid with. Employees: ask your owner. New here? Choose a plan first.');
   }
   return { email, role: c.role, tenantId: c.tenantId, tenantName: c.tenantName, slug: c.slug, platform: c.platform };
 }
@@ -234,7 +238,6 @@ async function fnError(error: unknown): Promise<Error> {
 
 function makeSupabaseBackend(client: SupabaseClient): Backend {
   return {
-    ...makeSaasExt(client),
     mode: 'supabase',
     async getCatalog() {
       const { data, error } = await client.rpc('get_catalog');
@@ -259,7 +262,7 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       // Bills are created by a database function so the number is handed out safely (see supabase/setup.sql).
       const { reference: _r, ...row } = toRow(input);
       void _r;
-      const { data, error } = await client.rpc('create_quote', { p: { ...row, branch_id: input.branchId ?? null }, p_reference: overrideRef?.trim() || null });
+      const { data, error } = await client.rpc('create_quote', { p: row, p_reference: overrideRef?.trim() || null });
       if (error) throw new Error(error.code === '23505' ? 'This bill number already exists. Use a different bill number.' : error.message);
       return { ...input, reference: String(data), id: newId(), createdAt: new Date().toISOString(), status: 'new' };
     },
@@ -287,16 +290,16 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
     },
     canCreateStaff: true,
     async listStaff() {
-      const { data, error } = await client.from('members').select('user_id,email,active,branch_id').eq('role', 'staff').order('email');
+      const { data, error } = await client.from('members').select('user_id,email,active').eq('role', 'staff').order('email');
       if (error) throw error;
-      return (data as { user_id: string; email: string; active: boolean; branch_id?: string | null }[]).map((r) => ({ id: r.user_id, email: r.email, active: r.active, branchId: r.branch_id }));
+      return (data as { user_id: string; email: string; active: boolean }[]).map((r) => ({ id: r.user_id, email: r.email, active: r.active }));
     },
     async setStaffActive(id, active) {
       const { data, error } = await client.from('members').update({ active }).eq('user_id', id).select('user_id');
       if (error) throw error;
       if (!data || data.length === 0) throw new Error(NOT_ALLOWED);
     },
-    async createStaff(email, password, branchId) { await callStaffFn(client, { action: 'create', email, password, branchId }); },
+    async createStaff(email, password) { await callStaffFn(client, { action: 'create', email, password }); },
     async deleteStaff(id) { await callStaffFn(client, { action: 'delete', id }); },
     async resetStaffPassword(id, password) { await callStaffFn(client, { action: 'resetPassword', id, password }); },
     async signUp(email, password) {
@@ -393,6 +396,39 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       if (error) throw new Error(error.message);
       return (data ?? []) as TenantPayment[];
     },
+    async platformCollections() {
+      const { data, error } = await client.rpc('platform_collections');
+      if (error) throw new Error(/platform_collections/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/16-collections.sql in the Supabase SQL Editor first, then refresh.' : error.message);
+      return (data ?? []) as CollectionRow[];
+    },
+    async platformCollected(fromISO, toISO) {
+      const { data, error } = await client.rpc('platform_collected_payments', { p_from: fromISO, p_to: toISO });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as CollectedPayment[];
+    },
+    async platformRecordCollection(v) {
+      const { data, error } = await client.rpc('platform_record_collection', { p_tenant: v.tenantId, p_period: v.period, p_amount_paise: Math.round(v.amountRupees * 100), p_paid_on: v.paidOn, p_method: v.method, p_note: v.note });
+      if (error) throw new Error(error.message);
+      return String(data);
+    },
+    async platformLogFollowup(v) {
+      const { error } = await client.rpc('platform_log_followup', { p_tenant: v.tenantId, p_action: v.action, p_note: v.note, p_promise: v.promiseDate });
+      if (error) throw new Error(error.message);
+    },
+    async platformFollowups(tenantId) {
+      const { data, error } = await client.rpc('platform_followups', { p_tenant: tenantId });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as FollowUp[];
+    },
+    async platformSetPhone(tenantId, phone) {
+      const { error } = await client.rpc('platform_set_phone', { p_tenant: tenantId, p_phone: phone });
+      if (error) throw new Error(error.message);
+    },
+    async platformSendReminders(tenantIds, note) {
+      const { data, error } = await client.functions.invoke('send-payment-reminder', { body: { tenantIds, note } });
+      if (error) throw await fnError(error);
+      return data as ReminderResult;
+    },
     async platformUpsertPlan(p) {
       const { error } = await client.rpc('platform_upsert_plan', { p_key: p.period, p_name: p.name, p_months: p.months, p_price_paise: Math.round(p.price * 100), p_description: p.description, p_features: p.features, p_popular: p.popular, p_active: p.active, p_sort: p.sort });
       if (error) throw new Error(/platform_upsert_plan/.test(error.message) && /function|schema cache/i.test(error.message) ? 'Run supabase/14-custom-plans.sql in the Supabase SQL Editor first, then try again.' : error.message);
@@ -447,8 +483,8 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       const { error } = await client.from('quotes').delete().eq('reference', reference);
       if (error) throw error;
     },
-    async bookedTimes(branchId) {
-      const { data, error } = await client.rpc('booked_times', { p_branch: branchId ?? null });
+    async bookedTimes() {
+      const { data, error } = await client.rpc('booked_times');
       if (error) throw error;
       const map: Record<string, TimeRange[]> = {};
       ((data ?? []) as { booked_date: string; start_time: string; end_time: string }[]).forEach((r) => {
@@ -600,7 +636,6 @@ function makeHttpBackend(apiUrl: string): Backend {
   }
 
   return {
-    ...unsupportedExt,
     mode: 'api',
     async getCatalog() { const r = await call<{ categories: CatalogCategory[] | null }>('catalog.get'); return r.categories && r.categories.length ? r.categories : cloneCatalog(); },
     async saveCatalog(catalog) { await call('catalog.save', { categories: catalog }); },
@@ -634,6 +669,13 @@ function makeHttpBackend(apiUrl: string): Backend {
     async platformSetNote() { throw new Error('Not available on Hostinger.'); },
     async platformTenantPayments() { throw new Error('Not available on Hostinger.'); },
     async platformDeletePlan() { throw new Error('Not available on Hostinger.'); },
+    async platformCollections() { throw new Error('Not available on Hostinger.'); },
+    async platformCollected() { throw new Error('Not available on Hostinger.'); },
+    async platformRecordCollection() { throw new Error('Not available on Hostinger.'); },
+    async platformLogFollowup() { throw new Error('Not available on Hostinger.'); },
+    async platformFollowups() { throw new Error('Not available on Hostinger.'); },
+    async platformSetPhone() { throw new Error('Not available on Hostinger.'); },
+    async platformSendReminders() { throw new Error('Not available on Hostinger.'); },
     async platformListCoupons() { return []; },
     async platformSaveCoupon() { throw new Error('Not available on Hostinger.'); },
     async listTenants() { return []; },

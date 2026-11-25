@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { ArrowLeft, CalendarCheck, Download, FileText, Loader2, MessageCircle, Pencil, Plus, Search, Trash2, Undo2 } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, Eye, FileText, Loader2, MessageCircle, Pencil, Plus, Search, Trash2, Undo2 } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, EmptyState, Input, Spinner, useUi } from '@/components/ui';
 import { PaymentBadge, StatusBadge } from '@/components/PaymentBadge';
 import { PaymentPanel } from '@/components/PaymentPanel';
@@ -11,7 +11,8 @@ import { durationText, findConflicts, scheduleLines, timeText } from '@/lib/book
 import { discountLabel, quoteAdvance, quoteDates, quotePaymentState } from '@/lib/pricing';
 import { whatsappLink } from '@/lib/settings';
 import type { Quote } from '@/lib/types';
-import { billFileName, buildBillBlob, saveBlob } from '@/pdf/generate';
+import { billFileName, buildBillBlob } from '@/pdf/generate';
+import { usePdfPreview } from '@/components/PdfPreview';
 import type { BillKind } from '@/pdf/BillDocument';
 
 type Filter = 'all' | 'open' | 'booked' | 'due' | 'paid';
@@ -138,12 +139,13 @@ function Detail({ reference }: { reference: string }) {
     setStatus.mutate({ quote, status: booked ? 'new' : 'confirmed' }, { onSuccess: () => toast(booked ? 'Booking released.' : 'Marked as booked. The dates are now blocked.'), onError: (e) => toast(e.message, 'error') });
   };
 
-  const pdf = async (kind: BillKind) => {
-    setBusy(kind);
-    try { saveBlob(await buildBillBlob(quote, business, payment, kind), billFileName(quote, kind)); }
-    catch (e) { toast(e instanceof Error ? e.message : 'Could not create the PDF.', 'error'); }
-    finally { setBusy(null); }
-  };
+  const { preview: openPreview, element: previewElement } = usePdfPreview();
+  const pdf = (kind: BillKind) => openPreview({
+    title: `${kind === 'invoice' ? 'Invoice' : 'Quotation'} ${quote.reference}`,
+    eyebrow: quote.customer.name,
+    filename: billFileName(quote, kind),
+    build: () => buildBillBlob(quote, business, payment, kind),
+  });
 
   const remove = async () => {
     if (!(await confirm({ title: `Delete bill ${quote.reference}?`, text: isAdmin ? 'This permanently removes the quotation and its payment history. The deletion is recorded in Activity.' : 'This removes the quotation and its payment history. The owner will see this in the activity log, and the bill number will not be used again.', confirmLabel: 'Delete bill', danger: true }))) return;
@@ -154,6 +156,7 @@ function Detail({ reference }: { reference: string }) {
 
   return (
     <div className="space-y-6">
+      {previewElement}
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
         <div>
           <Link href="/admin/quotes" className="inline-flex items-center gap-1.5 text-xs text-text-secondary hover:text-gold"><ArrowLeft size={13} /> All quotations</Link>
@@ -163,8 +166,8 @@ function Detail({ reference }: { reference: string }) {
         <div className="flex flex-wrap gap-2.5">
           {canBook && <Button variant={booked ? 'soft' : 'gold'} onClick={toggleBooked} disabled={setStatus.isPending}>{booked ? <><Undo2 size={15} /> Release booking</> : <><CalendarCheck size={15} /> Mark as booked</>}</Button>}
           {canEdit && <Link href={`/admin/edit/${encodeURIComponent(quote.reference)}`}><Button variant="outline"><Pencil size={15} /> Edit</Button></Link>}
-          <Button variant="outline" onClick={() => pdf('quotation')} disabled={busy !== null}>{busy === 'quotation' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Quotation PDF</Button>
-          <Button variant="outline" onClick={() => pdf('invoice')} disabled={busy !== null}>{busy === 'invoice' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Invoice PDF</Button>
+          <Button variant="outline" onClick={() => pdf('quotation')} disabled={busy !== null}><Eye size={15} /> Preview quotation</Button>
+          <Button variant="outline" onClick={() => pdf('invoice')} disabled={busy !== null}><Eye size={15} /> Preview invoice</Button>
           <Button variant="ghost" onClick={wa}><MessageCircle size={15} /></Button>
           {canDelete && <Button variant="danger" onClick={remove} aria-label="Delete bill"><Trash2 size={15} /></Button>}
         </div>

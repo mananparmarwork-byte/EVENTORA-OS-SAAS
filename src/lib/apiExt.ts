@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getBackend } from './backend';
-import type { BillingQuote, Invoice, InvoicePatch, InvoiceSettings, RequestPayload, Audience, Campaign, InboxCounts, Lead, MessageRule, MessageTemplate, NewOwner, NotificationFeed, OwnerRequest, PaymentInfo, PlatformConfig, PlatformRequest, Preset, PublicContact, RequestKind, TenantMeta } from './types';
+import type { BillingQuote, Invoice, InvoicePatch, InvoiceSettings, RequestPayload, Audience, Campaign, InboxCounts, Lead, MessageRule, MessageTemplate, CustomRuleInput, PlatformBranch, NewOwner, NotificationFeed, OwnerRequest, PaymentInfo, PlatformConfig, PlatformRequest, Preset, PublicContact, RequestKind, TenantMeta } from './types';
 
 const be = () => getBackend();
 
@@ -59,7 +59,7 @@ export const submitLead = (v: { name: string; business: string; phone: string; e
 
 /* ----------------------------------------------------- software owner --- */
 function refreshPlatformExt(qc: ReturnType<typeof useQueryClient>) {
-  for (const k of [['platform-requests'], ['platform-leads'], ['inbox-counts'], ['tenant-meta'], ['platform-campaigns'], ['platform-templates'], ['platform-rules'], ['platform-config'],
+  for (const k of [['platform-requests'], ['platform-leads'], ['inbox-counts'], ['tenant-meta'], ['platform-branches'], ['platform-campaigns'], ['platform-templates'], ['platform-rules'], ['platform-config'],
     ['platform-invoices'], ['invoice-settings'], ['platform-subs'], ['platform-dashboard'], ['tenants'], ['platform-payments']]) void qc.invalidateQueries({ queryKey: k });
 }
 export function usePlatformConfig(enabled = true) { return useQuery<PlatformConfig>({ queryKey: ['platform-config'], queryFn: () => be().platformGetConfig(), enabled, retry: false }); }
@@ -70,6 +70,7 @@ export function useTenantMeta() { return useQuery<TenantMeta[]>({ queryKey: ['te
 export function usePlatformCampaigns() { return useQuery<Campaign[]>({ queryKey: ['platform-campaigns'], queryFn: () => be().platformListCampaigns(), retry: false }); }
 export function usePlatformTemplates() { return useQuery<MessageTemplate[]>({ queryKey: ['platform-templates'], queryFn: () => be().platformListTemplates(), retry: false }); }
 export function usePlatformRules() { return useQuery<MessageRule[]>({ queryKey: ['platform-rules'], queryFn: () => be().platformListRules(), retry: false }); }
+export function usePlatformBranches(tenantId: string) { return useQuery<PlatformBranch[]>({ queryKey: ['platform-branches', tenantId], queryFn: () => be().platformListBranches(tenantId), retry: false }); }
 export function usePreviewMessage(v: { title: string; body: string; audience: Audience }, enabled: boolean) {
   return useQuery({ queryKey: ['preview-message', v.title, v.body, JSON.stringify(v.audience)], queryFn: () => be().platformPreviewMessage(v), enabled, retry: false, staleTime: 10_000 });
 }
@@ -90,6 +91,9 @@ export function usePlatformExt() {
     saveTemplate: useMutation({ mutationFn: (v: { id?: string; name: string; title: string; body: string; kind: string }) => be().platformSaveTemplate(v), onSuccess: done }),
     deleteTemplate: useMutation({ mutationFn: (id: string) => be().platformDeleteTemplate(id), onSuccess: done }),
     saveRule: useMutation({ mutationFn: (r: Parameters<ReturnType<typeof getBackend>['platformSaveRule']>[0]) => be().platformSaveRule(r), onSuccess: done }),
+    saveCustomRule: useMutation({ mutationFn: (r: CustomRuleInput) => be().platformSaveCustomRule(r), onSuccess: done }),
+    deleteRule: useMutation({ mutationFn: (key: string) => be().platformDeleteRule(key), onSuccess: done }),
+    deleteBranch: useMutation({ mutationFn: (v: { tenantId: string; branchId: string }) => be().platformDeleteBranch(v.tenantId, v.branchId), onSuccess: () => { done(); void qc.invalidateQueries({ queryKey: ['branches'] }); } }),
     runAuto: useMutation({ mutationFn: () => be().platformRunAuto(), onSuccess: done }),
     addOwner: useMutation({ mutationFn: (v: NewOwner) => be().platformAddOwner(v), onSuccess: done }),
     resetPassword: useMutation({ mutationFn: (v: { tenantId: string; password: string }) => be().platformResetOwnerPassword(v.tenantId, v.password) }),

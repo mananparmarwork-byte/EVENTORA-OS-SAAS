@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { ArrowLeft, Bookmark, Check, ChevronRight, Copy, Download, Loader2, LogIn, MessageCircle, Minus, Plus, RotateCcw, Save, ShieldCheck, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Bookmark, Check, ChevronRight, Copy, Download, Eye, Loader2, LogIn, MessageCircle, Minus, Plus, RotateCcw, Save, ShieldCheck, Trash2, X } from 'lucide-react';
 import { Brand } from '@/components/Logo';
 import { Button, Card, Field, Input, Select, Spinner, Switch, useUi } from '@/components/ui';
 import { DatePicker } from '@/components/DatePicker';
@@ -13,12 +13,13 @@ import { usePresets, useSavePresets } from '@/lib/apiExt';
 import { useBranchScope, ALL } from '@/lib/branch';
 import type { CatalogCategory, CatalogItem, EventSlots, PricingType, Quote, QuoteInput, TimeRange } from '@/lib/types';
 import { billFileName, buildBillBlob, saveBlob } from '@/pdf/generate';
+import { usePdfPreview } from '@/components/PdfPreview';
 
 const EVENT_TYPES = ['Wedding', 'Reception', 'Engagement', 'Birthday', 'Anniversary', 'Corporate', 'Other'];
 const DRAFT_KEY = 'eventora-estimate-draft-v1';
 
-type Details = { name: string; mobile: string; eventType: string; otherEventType: string; eventDate: string; guests: string; billNumber: string; customerGstNumber: string };
-const INITIAL: Details = { name: '', mobile: '', eventType: '', otherEventType: '', eventDate: '', guests: '150', billNumber: '', customerGstNumber: '' };
+type Details = { name: string; mobile: string; email: string; eventType: string; otherEventType: string; eventDate: string; guests: string; billNumber: string; customerGstNumber: string };
+const INITIAL: Details = { name: '', mobile: '', email: '', eventType: '', otherEventType: '', eventDate: '', guests: '150', billNumber: '', customerGstNumber: '' };
 type Errors = Partial<Record<keyof Details, string>>;
 
 type Draft = {
@@ -129,7 +130,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
     if (!q || editQuote) return;
     setEditQuote(q);
     const known = EVENT_TYPES.includes(q.customer.eventType) && q.customer.eventType !== 'Other';
-    setDetails({ name: q.customer.name, mobile: q.customer.mobile, eventType: known ? q.customer.eventType : 'Other', otherEventType: known || q.customer.eventType === 'Other' ? '' : q.customer.eventType, eventDate: quoteDates(q.customer).join(','), guests: String(q.customer.guests), billNumber: q.reference, customerGstNumber: q.customer.gstNumber ?? '' });
+    setDetails({ name: q.customer.name, mobile: q.customer.mobile, email: q.customer.email ?? '', eventType: known ? q.customer.eventType : 'Other', otherEventType: known || q.customer.eventType === 'Other' ? '' : q.customer.eventType, eventDate: quoteDates(q.customer).join(','), guests: String(q.customer.guests), billNumber: q.reference, customerGstNumber: q.customer.gstNumber ?? '' });
     setSelections(Object.fromEntries(q.services.map((s) => [s.id, s.pricingType === 'perUnit' ? s.quantity : 1])));
     setPriceOverrides(Object.fromEntries(q.services.map((s) => [s.id, s.unitPrice])));
     setGstEnabled(q.pricing.gstEnabled);
@@ -208,6 +209,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
     const e: Errors = {};
     if (!details.name.trim()) e.name = 'Please enter the customer name.';
     if (!/^[6-9]\d{9}$/.test(details.mobile.replace(/\D/g, '').slice(-10))) e.mobile = 'Enter a valid 10-digit mobile number.';
+    if (details.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.email.trim())) e.email = 'Enter a valid e-mail address.';
     if (!details.eventType) e.eventType = 'Choose an event type.';
     if (details.eventType === 'Other' && !details.otherEventType.trim()) e.otherEventType = 'Describe the occasion.';
     const oldDates = editQuote ? quoteDates(editQuote.customer) : [];
@@ -232,7 +234,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
 
   const buildInput = (): QuoteInput => ({
     reference: ownerOverride || shownNumber.trim() || 'Assigned on save',
-    customer: { name: details.name.trim(), mobile: details.mobile.trim(), eventType: eventTypeLabel(details), eventDate: dates[0] ?? '', eventDates: dates, eventSlots: slotsForDates, guests, gstNumber: details.customerGstNumber.trim(), hall: business.name },
+    customer: { name: details.name.trim(), mobile: details.mobile.trim(), email: details.email.trim(), eventType: eventTypeLabel(details), eventDate: dates[0] ?? '', eventDates: dates, eventSlots: slotsForDates, guests, gstNumber: details.customerGstNumber.trim(), hall: business.name },
     branchId: isStaff ? undefined : branchId,
     services: lines.map((l) => ({ id: l.id, name: l.name, category: l.categoryName, subcategory: l.subcategoryName, pricingType: l.pricingType, quantity: l.quantity, unitPrice: l.price, total: l.total, description: l.description })),
     pricing: {
@@ -261,6 +263,21 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
     };
     if (editing) updateQuote.mutate({ reference: editRef, input, before: editQuote as Quote }, { onSuccess: () => done({ ...(editQuote as Quote), ...input }), onError: (err) => toast(err.message, 'error') });
     else createQuote.mutate({ input, overrideRef: ownerOverride || undefined }, { onSuccess: (q) => done(q), onError: (err) => toast(err.message, 'error') });
+  };
+
+  const { preview: openPreview, element: previewElement } = usePdfPreview();
+  /** Shows the final PDF on screen before anything is saved or downloaded. */
+  const previewPdf = () => {
+    if (!dates.length || !details.name.trim()) { toast('Add the customer name and event date first.', 'error'); return; }
+    const q = draftQuote();
+    openPreview({
+      title: `Quotation preview${q.reference && q.reference !== 'Assigned on save' ? ` · ${q.reference}` : ''}`,
+      eyebrow: saved ? 'Saved bill' : 'Not saved yet',
+      filename: billFileName(q, 'quotation'),
+      build: () => buildBillBlob(q, business, payment, 'quotation'),
+      primaryLabel: saved ? undefined : editing ? 'Save changes' : session ? 'Save quotation' : 'Sign in to save',
+      onPrimary: saved || !writable ? undefined : save,
+    });
   };
 
   const downloadPdf = async () => {
@@ -323,6 +340,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
 
   const body = (
     <div className={cn('grid gap-6 xl:grid-cols-[1fr_400px]', !embedded && 'mx-auto max-w-[1280px] px-4 py-8 sm:px-8')}>
+      {previewElement}
       <div className="min-w-0 space-y-6">
         {!embedded && (
           <div className="fade-up">
@@ -339,6 +357,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
           <div className="grid gap-4 p-5 sm:grid-cols-2">
             <Field label="Customer name" required error={errors.name}><Input value={details.name} onChange={(e) => set('name', e.target.value)} placeholder="Full name" autoComplete="name" /></Field>
             <Field label="Mobile number" required error={errors.mobile} hint="10 digits"><Input value={details.mobile} onChange={(e) => set('mobile', e.target.value)} inputMode="tel" placeholder="98765 43210" autoComplete="tel" /></Field>
+            <Field label="E-mail" error={errors.email} hint="Optional · for payment reminders"><Input type="email" value={details.email} onChange={(e) => set('email', e.target.value.trim())} inputMode="email" placeholder="name@example.com" autoComplete="email" /></Field>
             <Field label="Event type" required error={errors.eventType}>
               <Select value={details.eventType} onChange={(e) => set('eventType', e.target.value)}><option value="">Choose event type</option>{EVENT_TYPES.map((t) => <option key={t}>{t}</option>)}</Select>
             </Field>
@@ -512,6 +531,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
               <Button variant="gold" size="lg" className="w-full" onClick={save} disabled={saving || !writable}>{saving ? <Loader2 size={16} className="animate-spin" /> : session ? <Save size={16} /> : <LogIn size={16} />} {editing ? 'Save changes' : session ? 'Save quotation' : 'Sign in to save'}</Button>
             )}
             {!writable && <p className="text-center text-xs text-error">Your plan has ended, so bills cannot be saved. Renew in Billing.</p>}
+            <Button variant="soft" className="w-full" onClick={previewPdf}><Eye size={15} /> Preview final PDF</Button>
             <div className="grid grid-cols-2 gap-2.5">
               <Button variant="outline" onClick={downloadPdf} disabled={pdfBusy}>{pdfBusy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} PDF</Button>
               <Button variant="outline" onClick={sendWhatsApp}><MessageCircle size={15} /> WhatsApp</Button>

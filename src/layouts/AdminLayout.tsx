@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, Redirect, useLocation } from 'wouter';
-import { AlertTriangle, BarChart3, Bell, Building2, CalendarDays, CreditCard, ChevronsLeft, ChevronsRight, FileClock, FilePlus2, FileText, Layers, LayoutDashboard, LogOut, Menu, Plus, Settings, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, Building2, CalendarDays, CreditCard, ChevronsLeft, ChevronsRight, Eye, FileClock, FilePlus2, FileText, Layers, LayoutDashboard, LogOut, Menu, Plus, Settings, ShieldCheck, X } from 'lucide-react';
+import { platformViewEnd } from '@/lib/dataTools';
 import { Brand } from '@/components/Logo';
 import { BranchSwitcher } from '@/components/BranchSwitcher';
 import { BrandedLoader, CommandSearch, friendlyName, NotificationsMenu, ProfileMenu, WELCOME_FLAG, WelcomeSplash } from '@/components/Shell';
@@ -130,7 +131,9 @@ export function AdminLayout({ children, ownerOnly = false, platformOnly = false 
   if (loading) return <BrandedLoader />;
   if (!session) return <Redirect to="/login" />;
   // Plan or trial over: the owner can only open Billing (and the software-owner panel); employees are fully locked out.
-  const locked = Boolean(sub && !sub.writable);
+  const viewing = Boolean(session.viewing);
+  const locked = Boolean(sub && !sub.writable) && !viewing;
+  const exitView = async () => { try { await platformViewEnd(); } catch (e) { toast(e instanceof Error ? e.message : 'Could not leave the client view.', 'error'); return; } qc.clear(); navigate('/admin/platform'); };
   const canUsePlatform = Boolean(session.platform) && location === '/admin/platform';
   const doSignOut = async () => { await signOut(); qc.clear(); toast('Signed out', 'info'); navigate('/login'); };
   if (locked && !isAdmin) return <LockScreen onSignOut={async () => { await signOut(); qc.clear(); navigate('/login'); }} />;
@@ -179,7 +182,7 @@ export function AdminLayout({ children, ownerOnly = false, platformOnly = false 
           {!compact && (
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-semibold text-text">{session.email}</p>
-              <p className="truncate text-[10px] uppercase tracking-wide text-gold">{session.tenantName ? `${session.tenantName} · ` : ''}{isAdmin ? 'Owner' : 'Employee'}</p>
+              <p className="truncate text-[10px] uppercase tracking-wide text-gold">{session.tenantName ? `${session.tenantName} · ` : ''}{viewing ? 'Viewing (read-only)' : isAdmin ? 'Owner' : 'Employee'}</p>
               <button type="button" onClick={() => void doSignOut()} className="flex items-center gap-1 text-[11px] text-text-secondary hover:text-gold"><LogOut size={12} /> Sign out</button>
             </div>
           )}
@@ -219,7 +222,14 @@ export function AdminLayout({ children, ownerOnly = false, platformOnly = false 
           <ProfileMenu session={session} isAdmin={isAdmin} onSignOut={() => void doSignOut()} />
           <Link href="/admin/new"><Button variant="gold" size="md"><Plus size={16} /> <span className="hidden sm:inline">New booking</span></Button></Link>
         </header>
-        <SubscriptionBanner isAdmin={isAdmin} />
+        {viewing && (
+          <div className="sticky top-[72px] z-10 flex flex-wrap items-center gap-3 border-b border-warning/40 bg-warning-bg px-4 py-2.5 text-sm text-warning sm:px-8" role="status">
+            <Eye size={16} className="shrink-0" />
+            <span className="min-w-0 flex-1"><strong>Viewing {session.tenantName ?? 'a client'}.</strong> This is exactly what they see, read-only. Nothing can be changed.</span>
+            <button type="button" onClick={() => void exitView()} className="rounded-lg bg-text/10 px-3 py-1 text-xs font-semibold hover:bg-text/20">Exit client view</button>
+          </div>
+        )}
+        {!viewing && <SubscriptionBanner isAdmin={isAdmin} />}
         <main key={location} className="page-in mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 sm:py-8">{children}</main>
       </div>
       {welcome && <WelcomeSplash name={friendlyName(session.email)} business={session.tenantName} onDone={closeWelcome} />}

@@ -6,7 +6,7 @@ import { useSubscriptionOverview } from '@/lib/api';
 import { usePlatformCampaigns, usePlatformExt, usePlatformRules, usePlatformTemplates, usePreviewMessage } from '@/lib/apiExt';
 import { cn, fmtDate } from '@/lib/format';
 import { whatsappLink } from '@/lib/settings';
-import type { Audience, MessageRule, MessageTemplate, NoticeKind, SendResult } from '@/lib/types';
+import type { Audience, CustomRuleInput, MessageRule, MessageTemplate, NoticeKind, SendResult } from '@/lib/types';
 
 const SEGMENTS: { id: string; label: string; help: string }[] = [
   { id: 'due', label: 'Money to collect', help: 'Plan ended or a payment failed' },
@@ -242,21 +242,54 @@ export function MessagesTab({ initialTenant }: { initialTenant?: string }) {
 }
 
 /* -------------------------------------------------------------------------- Automation --- */
-function RuleEditor({ rule, onClose }: { rule: MessageRule; onClose: () => void }) {
+const BLANK_RULE: CustomRuleInput = { label: '', trigger: 'before_end', appliesTo: 'any', days: 3, enabled: true, title: '', body: '', kind: 'reminder', channels: ['app'] };
+
+/** Edit a built-in automatic message, or create / edit one of your own (a custom automation). */
+function RuleEditor({ rule, onClose }: { rule: MessageRule | null; onClose: () => void }) {
   const { toast } = useUi();
-  const { saveRule } = usePlatformExt();
-  const [r, setR] = useState(rule);
-  const save = () => saveRule.mutate({ key: r.key, enabled: r.enabled, days: r.days, title: r.title, body: r.body, kind: r.kind, channels: r.channels }, { onSuccess: () => { toast('Saved.'); onClose(); }, onError: (e) => toast(e.message, 'error') });
+  const { saveRule, saveCustomRule, deleteRule } = usePlatformExt();
+  const { confirm } = useUi();
+  const isNew = rule === null;
+  const isCustom = isNew || Boolean(rule?.custom);
+  const [r, setR] = useState<CustomRuleInput & { description: string; builtinTrigger: MessageRule['trigger'] }>(() => rule
+    ? { key: rule.key, label: rule.label, trigger: rule.trigger === 'after_end' ? 'after_end' : 'before_end', appliesTo: rule.appliesTo, days: rule.days, enabled: rule.enabled, title: rule.title, body: rule.body, kind: rule.kind, channels: rule.channels, description: rule.description, builtinTrigger: rule.trigger }
+    : { ...BLANK_RULE, description: 'Your own automatic message. It goes to each owner\'s inbox once per plan end date.', builtinTrigger: 'before_end' });
+  const busy = saveRule.isPending || saveCustomRule.isPending;
   const hasEmail = r.channels.includes('email');
+  const showDays = r.builtinTrigger !== 'event';
+  const save = () => {
+    const done = { onSuccess: () => { toast('Saved.'); onClose(); }, onError: (e: Error) => toast(e.message, 'error') };
+    if (isCustom) {
+      if (r.label.trim().length < 2) { toast('Give this automation a name.', 'error'); return; }
+      if (!r.title.trim() || !r.body.trim()) { toast('Write the title and the message.', 'error'); return; }
+      saveCustomRule.mutate({ key: r.key, label: r.label.trim(), trigger: r.trigger, appliesTo: r.appliesTo, days: r.days, enabled: r.enabled, title: r.title, body: r.body, kind: r.kind, channels: r.channels }, done);
+    } else saveRule.mutate({ key: r.key as string, enabled: r.enabled, days: r.days, title: r.title, body: r.body, kind: r.kind, channels: r.channels }, done);
+  };
+  const remove = async () => {
+    if (!r.key || !(await confirm({ title: `Delete “${r.label}”?`, text: 'It will stop sending. Messages already sent stay in the owners\' inboxes.', confirmLabel: 'Delete', danger: true }))) return;
+    deleteRule.mutate(r.key, { onSuccess: () => { toast('Automation deleted.', 'info'); onClose(); }, onError: (e) => toast(e.message, 'error') });
+  };
+  const addToken = (t: string) => setR((c) => ({ ...c, body: `${c.body}{${t}}` }));
   return (
-    <Modal title={r.label} eyebrow="Automatic message" onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="gold" onClick={save} disabled={saveRule.isPending}>{saveRule.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Save</Button></>}>
+    <Modal title={isNew ? 'New automation' : r.label} eyebrow={isCustom ? 'Your own automatic message' : 'Automatic message'} onClose={onClose}
+      footer={<>{!isNew && isCustom && <Button variant="ghost" className="mr-auto text-error" onClick={() => void remove()}><Trash2 size={14} /> Delete</Button>}<Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="gold" onClick={save} disabled={busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Save</Button></>}>
       <div className="space-y-4">
         <p className="text-xs text-text-secondary">{r.description}</p>
         <Switch checked={r.enabled} onChange={(v) => setR({ ...r, enabled: v })} label="Send this automatically" />
-        {r.trigger !== 'event' && <Field label={r.trigger === 'before_end' ? 'Days before the end' : 'Days after the end'} hint={r.trigger === 'before_end' ? '0 = on the last day' : ''} className="max-w-[200px]"><Input type="number" min={0} max={365} value={r.days} onChange={(e) => setR({ ...r, days: Math.max(0, Number(e.target.value) || 0) })} inputMode="numeric" /></Field>}
+        {isCustom && (
+          <>
+            <Field label="Name (only you see this)" required><Input value={r.label} onChange={(e) => setR({ ...r, label: e.target.value })} maxLength={80} placeholder="e.g. Diwali offer reminder" /></Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="When"><Select value={r.trigger} onChange={(e) => setR({ ...r, trigger: e.target.value as 'before_end' | 'after_end' })}><option value="before_end">Before the plan / trial ends</option><option value="after_end">After the plan / trial ended</option></Select></Field>
+              <Field label="Who gets it"><Select value={r.appliesTo} onChange={(e) => setR({ ...r, appliesTo: e.target.value as 'any' | 'trial' | 'paid' })}><option value="any">Everyone</option><option value="trial">Only free trials</option><option value="paid">Only paid plans</option></Select></Field>
+            </div>
+          </>
+        )}
+        {showDays && <Field label={(isCustom ? r.trigger : r.builtinTrigger) === 'before_end' ? 'Days before the end' : 'Days after the end'} hint={(isCustom ? r.trigger : r.builtinTrigger) === 'before_end' ? '0 = on the last day' : ''} className="max-w-[200px]"><Input type="number" min={0} max={365} value={r.days} onChange={(e) => setR({ ...r, days: Math.max(0, Number(e.target.value) || 0) })} inputMode="numeric" /></Field>}
         <Field label="Title" required><Input value={r.title} onChange={(e) => setR({ ...r, title: e.target.value })} maxLength={160} /></Field>
-        <Field label="Message" required hint={`${TOKENS.map((t) => `{${t}}`).join(' ')} {branch} {until} {note}`}><Textarea rows={5} value={r.body} onChange={(e) => setR({ ...r, body: e.target.value })} maxLength={1500} /></Field>
-        <Field label="Type"><Select value={r.kind} onChange={(e) => setR({ ...r, kind: e.target.value as NoticeKind })}>{KINDS.map((k) => <option key={k} value={k}>{KIND_STYLE[k].label}</option>)}</Select></Field>
+        <Field label="Message" required><Textarea rows={5} value={r.body} onChange={(e) => setR({ ...r, body: e.target.value })} maxLength={1500} placeholder="Hello {business}, your plan ends on {end_date}. Pay ₹{amount} to {upi}." /></Field>
+        <div className="flex flex-wrap items-center gap-1.5"><span className="mr-1 text-[11px] text-text-disabled">Insert:</span>{[...TOKENS, 'branch', 'until', 'note'].map((t) => <button key={t} type="button" onClick={() => addToken(t)} className="rounded-full border border-border px-2.5 py-0.5 font-mono text-[11px] text-text-secondary hover:border-gold hover:text-gold">{`{${t}}`}</button>)}</div>
+        <Field label="Type"><Select value={r.kind} onChange={(e) => setR({ ...r, kind: e.target.value })}>{KINDS.map((k) => <option key={k} value={k}>{KIND_STYLE[k].label}</option>)}</Select></Field>
         <Switch checked={hasEmail} onChange={(v) => setR({ ...r, channels: v ? ['app', 'email'] : ['app'] })} label="Also e-mail it" description="Needs the e-mail set-up (send-message-emails function)." />
       </div>
     </Modal>
@@ -267,7 +300,7 @@ export function AutomationTab() {
   const { toast } = useUi();
   const { data = [], isLoading, error } = usePlatformRules();
   const { saveRule, runAuto } = usePlatformExt();
-  const [edit, setEdit] = useState<MessageRule | null>(null);
+  const [edit, setEdit] = useState<MessageRule | 'new' | null>(null);
   if (isLoading) return <Spinner label="Loading automation" />;
   if (error) return <Card className="p-8 text-center text-sm text-error">{(error as Error).message}</Card>;
   const groups: { id: MessageRule['trigger']; title: string; text: string; icon: typeof Clock }[] = [
@@ -280,7 +313,7 @@ export function AutomationTab() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div><h2 className="font-display text-2xl font-semibold text-text">Automation</h2><p className="mt-1 max-w-2xl text-sm text-text-secondary">Messages that go out by themselves: plan reminders, payment follow-ups and instant replies. Switch each one on or off and rewrite the words.</p></div>
-        <Button variant="outline" onClick={() => runAuto.mutate(undefined, { onSuccess: (n) => toast(n ? `${n} reminder${n === 1 ? '' : 's'} created.` : 'Nothing new to send right now.', n ? 'success' : 'info'), onError: (e) => toast(e.message, 'error') })} disabled={runAuto.isPending}>{runAuto.isPending ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />} Check and send now</Button>
+        <div className="flex flex-wrap gap-2"><Button variant="gold" onClick={() => setEdit('new')}><Plus size={15} /> New automation</Button><Button variant="outline" onClick={() => runAuto.mutate(undefined, { onSuccess: (n) => toast(n ? `${n} reminder${n === 1 ? '' : 's'} created.` : 'Nothing new to send right now.', n ? 'success' : 'info'), onError: (e) => toast(e.message, 'error') })} disabled={runAuto.isPending}>{runAuto.isPending ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />} Check and send now</Button></div>
       </div>
       <p className="rounded-xl border border-border bg-surface px-4 py-3 text-xs text-text-secondary">Reminders are created whenever an owner opens the app, and for everyone when you press the button above. To create them every morning even if nobody opens the app, run <code className="text-gold">supabase/17-auto-messages-cron.sql</code> once.</p>
       {groups.map((g) => (
@@ -290,7 +323,7 @@ export function AutomationTab() {
             {data.filter((r) => r.trigger === g.id).map((r) => (
               <li key={r.key} className="flex flex-wrap items-center gap-4 px-5 py-4">
                 <div className="min-w-0 flex-1">
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-text">{r.label}{g.id !== 'event' && <Badge tone="gold">{g.id === 'before_end' ? (r.days === 0 ? 'last day' : `${r.days} day${r.days === 1 ? '' : 's'} before`) : `${r.days} day${r.days === 1 ? '' : 's'} after`}</Badge>}{r.appliesTo !== 'any' && <Badge>{r.appliesTo === 'trial' ? 'trials' : 'paid plans'}</Badge>}{r.channels.includes('email') && <Badge tone="info">e-mail</Badge>}</p>
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-text">{r.label}{r.custom && <Badge tone="info">custom</Badge>}{g.id !== 'event' && <Badge tone="gold">{g.id === 'before_end' ? (r.days === 0 ? 'last day' : `${r.days} day${r.days === 1 ? '' : 's'} before`) : `${r.days} day${r.days === 1 ? '' : 's'} after`}</Badge>}{r.appliesTo !== 'any' && <Badge>{r.appliesTo === 'trial' ? 'trials' : 'paid plans'}</Badge>}{r.channels.includes('email') && <Badge tone="info">e-mail</Badge>}</p>
                   <p className="mt-0.5 line-clamp-1 text-xs text-text-secondary">{r.title}</p>
                   <p className="mt-0.5 text-[11px] text-text-disabled">Sent {r.sent} time{r.sent === 1 ? '' : 's'}</p>
                 </div>
@@ -301,7 +334,7 @@ export function AutomationTab() {
           </ul>
         </Card>
       ))}
-      {edit && <RuleEditor key={edit.key} rule={edit} onClose={() => setEdit(null)} />}
+      {edit && <RuleEditor key={edit === 'new' ? 'new' : edit.key} rule={edit === 'new' ? null : edit} onClose={() => setEdit(null)} />}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, FileText, Loader2, Pencil, Plus, Save, Search, Trash2 } from 'lucide-react';
+import { Download, Eye, FileText, Loader2, Pencil, Plus, Save, Search, Trash2 } from 'lucide-react';
 import { Button, Card, CardHeader, EmptyState, Field, Input, Modal, Spinner, Switch, Textarea, useUi } from '@/components/ui';
 import { useInvoiceSettings, usePlatformExt, usePlatformInvoices } from '@/lib/apiExt';
 import { fmtDate, inr } from '@/lib/format';
-import { buildInvoiceBlob, invoiceFileName, saveBlob } from '@/pdf/generate';
+import { buildInvoiceBlob, invoiceFileName } from '@/pdf/generate';
+import { usePdfPreview } from '@/components/PdfPreview';
 import type { Invoice, InvoiceSettings } from '@/lib/types';
 
 const dateOnly = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '');
@@ -25,7 +26,8 @@ function EditInvoice({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
   const [paidOn, setPaidOn] = useState(dateOnly(inv.paidOn));
   const [plan, setPlan] = useState(inv.planName);
   const [notes, setNotes] = useState(inv.notes);
-  const [busy, setBusy] = useState(false);
+  const [busy] = useState(false);
+  const { preview, element: previewElement } = usePdfPreview();
 
   const total = items.reduce((a, i) => a + (Number(i.amount) || 0), 0);
   const parts = split(total, gst, Number(rate) || 0);
@@ -33,17 +35,16 @@ function EditInvoice({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
 
   const patch = () => ({ number, issuedAt: issued ? `${issued}T12:00:00+05:30` : undefined, billTo: bill, seller, items: items.map((i) => ({ description: i.description.trim(), amount: Number(i.amount) || 0 })), gstEnabled: gst, gstRate: Number(rate) || 0, paid: Number(paid) || 0, paymentRef: ref, paidOn: paidOn || undefined, planName: plan, notes });
   const save = () => updateInvoice.mutate({ id: inv.id, patch: patch() }, { onSuccess: () => { toast('Invoice saved.'); onClose(); }, onError: (e) => toast(e.message, 'error') });
-  const pdf = async () => {
-    setBusy(true);
-    try {
-      const p = patch();
-      saveBlob(await buildInvoiceBlob({ ...inv, number, issuedAt: p.issuedAt ?? inv.issuedAt, billTo: bill, seller, items: p.items, gstEnabled: gst, gstRate: p.gstRate, subtotal: parts.sub, gst: parts.gst, total, paid: p.paid, paymentRef: ref, paidOn: paidOn || null, planName: plan, notes }), invoiceFileName({ ...inv, number }));
-    } catch (e) { toast(e instanceof Error ? e.message : 'Could not make the PDF.', 'error'); } finally { setBusy(false); }
+  const pdf = () => {
+    const p = patch();
+    const draft = { ...inv, number, issuedAt: p.issuedAt ?? inv.issuedAt, billTo: bill, seller, items: p.items, gstEnabled: gst, gstRate: p.gstRate, subtotal: parts.sub, gst: parts.gst, total, paid: p.paid, paymentRef: ref, paidOn: paidOn || null, planName: plan, notes };
+    preview({ title: `Invoice ${number}`, eyebrow: 'Preview before saving', filename: invoiceFileName({ ...inv, number }), build: () => buildInvoiceBlob(draft), primaryLabel: 'Save invoice', onPrimary: save });
   };
 
   return (
-    <Modal title={`Edit invoice ${inv.number}`} eyebrow={inv.business} onClose={onClose} width="max-w-3xl" footer={<><Button variant="outline" onClick={() => void pdf()} disabled={busy}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Preview PDF</Button><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="gold" onClick={save} disabled={updateInvoice.isPending}>{updateInvoice.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Save invoice</Button></>}>
+    <Modal title={`Edit invoice ${inv.number}`} eyebrow={inv.business} onClose={onClose} width="max-w-3xl" footer={<><Button variant="outline" onClick={pdf} disabled={busy}><Eye size={14} /> Preview PDF</Button><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="gold" onClick={save} disabled={updateInvoice.isPending}>{updateInvoice.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Save invoice</Button></>}>
       <div className="space-y-6">
+        {previewElement}
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Invoice number"><Input value={number} onChange={(e) => setNumber(e.target.value)} maxLength={30} /></Field>
           <Field label="Invoice date"><Input type="date" value={issued} onChange={(e) => setIssued(e.target.value)} /></Field>
@@ -112,10 +113,11 @@ export function InvoicesTab() {
   const { data = [], isLoading, error } = usePlatformInvoices();
   const [edit, setEdit] = useState<Invoice | null>(null);
   const [search, setSearch] = useState('');
-  const [busyId, setBusyId] = useState('');
+  const [busyId] = useState('');
+  const { preview: openPreview, element: previewElement } = usePdfPreview();
   const q = search.trim().toLowerCase();
   const list = useMemo(() => data.filter((i) => !q || [i.number, i.business, i.paymentRef].some((v) => v.toLowerCase().includes(q))), [data, q]);
-  const pdf = async (i: Invoice) => { setBusyId(i.id); try { saveBlob(await buildInvoiceBlob(i), invoiceFileName(i)); } catch (e) { toast(e instanceof Error ? e.message : 'Could not make the PDF.', 'error'); } finally { setBusyId(''); } };
+  const pdf = (i: Invoice) => openPreview({ title: `Invoice ${i.number}`, eyebrow: i.business, filename: invoiceFileName(i), build: () => buildInvoiceBlob(i) });
   if (isLoading) return <Spinner label="Loading invoices" />;
   if (error) return <Card className="p-8 text-center text-sm text-error">{(error as Error).message}</Card>;
   const sum = list.reduce((a, i) => a + i.total, 0);
@@ -133,13 +135,14 @@ export function InvoicesTab() {
               <li key={i.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
                 <div className="min-w-0 flex-1"><p className="text-sm font-medium text-text">{i.number} <span className="font-normal text-text-secondary">· {i.business}</span></p><p className="truncate text-xs text-text-secondary">{fmtDate(i.issuedAt)} · {i.items.map((x) => x.description).join(', ')}{i.gstEnabled ? ` · GST ${i.gstRate}%` : ''}</p></div>
                 <span className="font-semibold text-text tabular">{inr(i.total)}</span>
-                <Button size="sm" variant="outline" onClick={() => void pdf(i)} disabled={busyId === i.id}>{busyId === i.id ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} PDF</Button>
+                <Button size="sm" variant="outline" onClick={() => pdf(i)} disabled={busyId === i.id}><Eye size={13} /> Preview</Button>
                 <Button size="sm" variant="outline" onClick={() => setEdit(i)}><Pencil size={13} /> Edit</Button>
               </li>
             ))}
           </ul>
         )}
       </Card>
+      {previewElement}
       {edit && <EditInvoice key={edit.id} inv={edit} onClose={() => setEdit(null)} />}
     </div>
   );

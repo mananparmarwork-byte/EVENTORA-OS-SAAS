@@ -40,6 +40,8 @@ export type QuoteCustomer = {
   eventSlots?: EventSlots;
   guests: number;
   gstNumber?: string;
+  /** optional e-mail of the customer, used for payment requests and reminders */
+  email?: string;
   hall: string;
 };
 
@@ -102,7 +104,7 @@ export type PaymentSettings = {
 
 /* ------------------------------------------------------------ Roles & audit --- */
 export type Role = 'admin' | 'staff';
-export type Session = { email: string; role: Role; tenantId?: string; tenantName?: string; slug?: string; platform?: boolean } | null;
+export type Session = { email: string; role: Role; tenantId?: string; tenantName?: string; slug?: string; platform?: boolean; /** true while the super admin is looking at a client's dashboard (read-only) */ viewing?: boolean } | null;
 
 /** What an employee may do. The owner changes these in Settings → Team. */
 /** `deleteBills` is always false: employees can never delete a bill (the database enforces it, no switch exists). */
@@ -224,7 +226,10 @@ export type Recipient = { id: string; business: string; ownerEmail: string | nul
 export type SendResult = { campaignId: string; count: number; recipients: Recipient[]; email: boolean };
 export type Campaign = { id: string; createdAt: string; title: string; body: string; kind: NoticeKind; channels: string[]; audienceLabel: string; count: number; read: number };
 export type MessageTemplate = { id: string; name: string; title: string; body: string; kind: NoticeKind; builtin: boolean };
-export type MessageRule = { key: string; label: string; description: string; trigger: 'before_end' | 'after_end' | 'event'; appliesTo: 'any' | 'trial' | 'paid'; days: number; enabled: boolean; title: string; body: string; kind: NoticeKind; channels: string[]; sent: number };
+export type MessageRule = { key: string; label: string; description: string; trigger: 'before_end' | 'after_end' | 'event'; appliesTo: 'any' | 'trial' | 'paid'; days: number; enabled: boolean; title: string; body: string; kind: NoticeKind; channels: string[]; sent: number; custom?: boolean };
+export type CustomRuleInput = { key?: string; label: string; trigger: 'before_end' | 'after_end'; appliesTo: 'any' | 'trial' | 'paid'; days: number; enabled: boolean; title: string; body: string; kind: string; channels: string[] };
+/** One branch as the software owner sees it (with how many bills and employees would move if it is deleted). */
+export type PlatformBranch = { id: string; name: string; address: string; phone: string; isMain: boolean; active: boolean; createdAt: string; bills: number; staff: number };
 
 export type PlatformConfig = { whatsapp: string; phone: string; email: string; upi: string; payee: string; bankText: string; instructions: string; branchPrice: number; allowSelfSignup: boolean };
 export type PaymentInfo = Partial<PlatformConfig>;

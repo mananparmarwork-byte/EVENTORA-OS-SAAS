@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { BillingQuote, Invoice, InvoicePatch, InvoiceSettings, RequestPayload, Audience, AppNotification, BranchInfo, Campaign, InboxCounts, Lead, MessageRule, MessageTemplate, NewOwner, NewOwnerResult, NotificationFeed, OwnerRequest, PaymentInfo, PlatformConfig, PlatformRequest, Preset, PublicContact, RequestKind, SendResult, TenantMeta } from './types';
+import type { BillingQuote, Invoice, InvoicePatch, InvoiceSettings, RequestPayload, Audience, AppNotification, BranchInfo, Campaign, InboxCounts, Lead, MessageRule, MessageTemplate, CustomRuleInput, PlatformBranch, NewOwner, NewOwnerResult, NotificationFeed, OwnerRequest, PaymentInfo, PlatformConfig, PlatformRequest, Preset, PublicContact, RequestKind, SendResult, TenantMeta } from './types';
 
 /**
  * Everything added for: manual access (add owners), messages & automation, requests, multi-branch and saved custom items.
@@ -47,6 +47,11 @@ export interface SaasExt {
   platformSaveTemplate(v: { id?: string; name: string; title: string; body: string; kind: string }): Promise<void>;
   platformDeleteTemplate(id: string): Promise<void>;
   platformListRules(): Promise<MessageRule[]>;
+  platformSaveCustomRule(r: CustomRuleInput): Promise<string>;
+  platformDeleteRule(key: string): Promise<void>;
+  /** Software owner only: all branches of one business, and delete one (bills and employees move to its Main branch). */
+  platformListBranches(tenantId: string): Promise<PlatformBranch[]>;
+  platformDeleteBranch(tenantId: string, branchId: string): Promise<{ name: string; billsMoved: number; staffMoved: number }>;
   platformSaveRule(r: { key: string; enabled: boolean; days: number; title: string; body: string; kind: string; channels: string[] }): Promise<void>;
   platformRunAuto(): Promise<number>;
   platformAddOwner(v: NewOwner): Promise<NewOwnerResult>;
@@ -162,6 +167,10 @@ export function makeSaasExt(client: SupabaseClient): SaasExt {
     async platformSaveTemplate(v) { await rpc('platform_save_template', { p_id: v.id ?? null, p_name: v.name, p_title: v.title, p_body: v.body, p_kind: v.kind }); },
     async platformDeleteTemplate(id) { await rpc('platform_delete_template', { p_id: id }); },
     async platformListRules() { return (await rpc<MessageRule[] | null>('platform_list_rules')) ?? []; },
+    async platformSaveCustomRule(r) { return String(await rpc<string>('platform_save_custom_rule', { p_key: r.key ?? null, p_label: r.label, p_trigger: r.trigger, p_applies_to: r.appliesTo, p_days: r.days, p_enabled: r.enabled, p_title: r.title, p_body: r.body, p_kind: r.kind, p_channels: r.channels })); },
+    async platformDeleteRule(key) { await rpc('platform_delete_rule', { p_key: key }); },
+    async platformListBranches(tenantId) { return (await rpc<PlatformBranch[] | null>('platform_list_branches', { p_tenant: tenantId })) ?? []; },
+    async platformDeleteBranch(tenantId, branchId) { return rpc<{ name: string; billsMoved: number; staffMoved: number }>('platform_delete_branch', { p_tenant: tenantId, p_branch: branchId }); },
     async platformSaveRule(r) { await rpc('platform_save_rule', { p_key: r.key, p_enabled: r.enabled, p_days: r.days, p_title: r.title, p_body: r.body, p_kind: r.kind, p_channels: r.channels }); },
     async platformRunAuto() { return Number(await rpc<number>('platform_run_auto_messages')) || 0; },
     async platformAddOwner(v) {
@@ -173,7 +182,7 @@ export function makeSaasExt(client: SupabaseClient): SaasExt {
 }
 
 /** The Hostinger (PHP) version is a single business: none of the above exists there. */
-const EXT_KEYS = ['listBranches', 'saveBranch', 'setStaffBranch', 'getPresets', 'savePresets', 'myNotifications', 'markNotificationsRead', 'createRequest', 'billingQuote', 'myInvoices', 'platformListInvoices', 'platformUpdateInvoice', 'platformGetInvoiceSettings', 'platformSaveInvoiceSettings', 'myRequests', 'getPaymentInfo', 'publicContact', 'submitLead', 'platformGetConfig', 'platformSaveConfig', 'platformListRequests', 'platformDecideRequest', 'platformSetBranchLimit', 'platformTenantMeta', 'platformUpdateTenant', 'platformInboxCounts', 'platformListLeads', 'platformSetLead', 'platformPreviewMessage', 'platformSendMessage', 'platformListCampaigns', 'platformListTemplates', 'platformSaveTemplate', 'platformDeleteTemplate', 'platformListRules', 'platformSaveRule', 'platformRunAuto', 'platformAddOwner', 'platformResetOwnerPassword', 'platformSendEmails'];
+const EXT_KEYS = ['listBranches', 'saveBranch', 'setStaffBranch', 'getPresets', 'savePresets', 'myNotifications', 'markNotificationsRead', 'createRequest', 'billingQuote', 'myInvoices', 'platformListInvoices', 'platformUpdateInvoice', 'platformGetInvoiceSettings', 'platformSaveInvoiceSettings', 'myRequests', 'getPaymentInfo', 'publicContact', 'submitLead', 'platformGetConfig', 'platformSaveConfig', 'platformListRequests', 'platformDecideRequest', 'platformSetBranchLimit', 'platformTenantMeta', 'platformUpdateTenant', 'platformInboxCounts', 'platformListLeads', 'platformSetLead', 'platformPreviewMessage', 'platformSendMessage', 'platformListCampaigns', 'platformListTemplates', 'platformSaveTemplate', 'platformDeleteTemplate', 'platformListRules', 'platformSaveRule', 'platformSaveCustomRule', 'platformDeleteRule', 'platformListBranches', 'platformDeleteBranch', 'platformRunAuto', 'platformAddOwner', 'platformResetOwnerPassword', 'platformSendEmails'];
 const unsupportedCall = (name: string) => async () => {
   if (name === 'listBranches') return { branches: [], limit: 1, activeCount: 0, myBranchId: null };
   if (name === 'getPresets' || name === 'myRequests' || name === 'myInvoices') return [];

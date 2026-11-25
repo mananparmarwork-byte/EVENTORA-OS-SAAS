@@ -122,7 +122,7 @@ function fromRow(row: QuoteRow): Quote {
     reference: row.reference,
     customer: {
       name: row.customer_name, mobile: row.mobile, eventType: row.event_type, eventDate: row.event_date, eventDates: dates,
-      eventSlots: normalizeEventSlots(row.pricing?.eventSlots), guests: row.guests, gstNumber: row.customer_gst_number ?? '', hall: row.hall,
+      eventSlots: normalizeEventSlots(row.pricing?.eventSlots), email: typeof (row.pricing as { customerEmail?: unknown })?.customerEmail === 'string' ? (row.pricing as { customerEmail?: string }).customerEmail : '', guests: row.guests, gstNumber: row.customer_gst_number ?? '', hall: row.hall,
     },
     services: Array.isArray(row.services) ? row.services : [],
     pricing: {
@@ -146,7 +146,7 @@ const toRow = (input: QuoteInput) => ({
   customer_gst_number: input.customer.gstNumber ?? '',
   hall: input.customer.hall,
   services: input.services,
-  pricing: { ...input.pricing, eventDates: input.customer.eventDates ?? [input.customer.eventDate], eventSlots: input.customer.eventSlots ?? {} },
+  pricing: { ...input.pricing, eventDates: input.customer.eventDates ?? [input.customer.eventDate], eventSlots: input.customer.eventSlots ?? {}, customerEmail: input.customer.email ?? '' },
 });
 
 type ActivityRow = { branch_id?: string | null; id: string; at: string; actor_email: string | null; actor_role: string | null; action: ActivityEntry['action']; reference: string | null; title: string; detail: string | null; data: ActivityEntry['data'] | null };
@@ -157,14 +157,14 @@ const fromActivityRow = (r: ActivityRow): ActivityEntry => ({
 
 const NOT_ALLOWED = 'The database did not allow this change. If your free trial or subscription has ended, renew it in Billing; otherwise run the latest SQL files.';
 
-type Ctx = { role: Role | 'none'; tenantId?: string; tenantName?: string; slug?: string; platform?: boolean; problem: string };
+type Ctx = { role: Role | 'none'; tenantId?: string; tenantName?: string; slug?: string; platform?: boolean; viewing?: boolean; problem: string };
 
 /** Asks the database who is signed in and which business they belong to. Falls back to the members table if my_context() cannot be called. */
 async function lookupContext(client: SupabaseClient): Promise<Ctx> {
   const { data, error } = await client.rpc('my_context');
   if (!error && data && typeof data === 'object') {
-    const d = data as { role: string; tenantId?: string; tenantName?: string; slug?: string; platform?: boolean };
-    return { role: d.role === 'admin' || d.role === 'staff' ? d.role : 'none', tenantId: d.tenantId, tenantName: d.tenantName, slug: d.slug, platform: d.platform, problem: '' };
+    const d = data as { role: string; tenantId?: string; tenantName?: string; slug?: string; platform?: boolean; viewing?: boolean };
+    return { role: d.role === 'admin' || d.role === 'staff' ? d.role : 'none', tenantId: d.tenantId, tenantName: d.tenantName, slug: d.slug, platform: d.platform, viewing: Boolean(d.viewing), problem: '' };
   }
   const { data: u } = await client.auth.getUser();
   const id = u.user?.id;
@@ -204,6 +204,8 @@ async function callStaffFn(client: SupabaseClient, body: Record<string, unknown>
 
 /** Last step of every sign-in: ask the database who this person is, and refuse people with no business / no role. */
 async function finishSignIn(client: SupabaseClient, email: string): Promise<NonNullable<Session>> {
+  // a fresh sign-in always starts in the person's OWN workspace (never inside a client view left open earlier)
+  try { await client.rpc('platform_view_end'); } catch { /* not installed yet, or not the super admin */ }
   let c = await lookupContext(client);
   // Paid on the website first? Create the admin's business now (or reconnect the old one when the same email renews).
   const claimed = await autoClaim(client, c);
@@ -220,7 +222,7 @@ async function finishSignIn(client: SupabaseClient, email: string): Promise<NonN
     if (/confirm your email/i.test(claimed.claimError)) throw new Error(claimed.claimError);
     throw new Error('This login has no business yet, or it was switched off. Eventora accounts are created by the Eventora team: contact us to get access. Employees: ask your owner.');
   }
-  return { email, role: c.role, tenantId: c.tenantId, tenantName: c.tenantName, slug: c.slug, platform: c.platform };
+  return { email, role: c.role, tenantId: c.tenantId, tenantName: c.tenantName, slug: c.slug, platform: c.platform, viewing: Boolean(c.viewing) };
 }
 
 async function fnError(error: unknown): Promise<Error> {
@@ -492,7 +494,7 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       const email = data.session?.user?.email;
       if (!email) return null;
       const c = (await autoClaim(client, await lookupContext(client))).ctx;
-      return c.role === 'admin' || c.role === 'staff' ? { email, role: c.role, tenantId: c.tenantId, tenantName: c.tenantName, slug: c.slug, platform: c.platform } : null;
+      return c.role === 'admin' || c.role === 'staff' ? { email, role: c.role, tenantId: c.tenantId, tenantName: c.tenantName, slug: c.slug, platform: c.platform, viewing: Boolean(c.viewing) } : null;
     },
     async signIn(email, password) {
       const { data, error } = await client.auth.signInWithPassword({ email, password });
@@ -545,6 +547,7 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       },
     },
     async signOut() {
+      try { await client.rpc('platform_view_end'); } catch { /* ignore */ }
       const { error } = await client.auth.signOut();
       if (error) throw error;
     },
@@ -703,11 +706,14 @@ const apiUrl = String(import.meta.env.VITE_API_URL ?? '').trim();
 export const isBackendConfigured = Boolean(apiUrl || isSupabaseConfigured);
 
 let instance: Backend | null = null;
+let sbClient: SupabaseClient | null = null;
+/** The Supabase client (null on the Hostinger version). Used by the backup / client-view tools. */
+export function getSupabaseClient(): SupabaseClient | null { getBackend(); return sbClient; }
 export function getBackend(): Backend {
   // Priority: Hostinger API (VITE_API_URL) → Supabase. The app shows a setup screen if neither is set.
   if (!instance) {
     if (apiUrl) instance = makeHttpBackend(apiUrl);
-    else if (isSupabaseConfigured) instance = makeSupabaseBackend(createClient(url, key));
+    else if (isSupabaseConfigured) { sbClient = createClient(url, key); instance = makeSupabaseBackend(sbClient); }
     else throw new Error('No database is connected. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
   }
   return instance;

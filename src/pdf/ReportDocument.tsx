@@ -21,7 +21,7 @@ const s = StyleSheet.create({
   footer: { position: 'absolute', left: 32, right: 32, bottom: 18, flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 0.6, borderTopColor: C.line, paddingTop: 5 },
   footText: { fontSize: 7.5, color: C.muted },
 });
-const col = { ref: 1.1, name: 2.6, event: 1.5, date: 2.3, guests: 0.8, status: 1.1, total: 1.5, recv: 1.5, bal: 1.5 };
+const col = { ref: 1.1, name: 2.2, contact: 2.4, event: 1.3, date: 2.3, guests: 0.8, status: 1.1, total: 1.5, recv: 1.5, bal: 1.5 };
 const plain = (n: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Number.isFinite(n) ? n : 0);
 
 export function ReportDocument({ title, quotes, business }: { title: string; quotes: Quote[]; business: BusinessProfile }) {
@@ -50,7 +50,7 @@ export function ReportDocument({ title, quotes, business }: { title: string; quo
                 <Text style={{ fontSize: 8.5 }}>{list.length} enquir{list.length === 1 ? 'y' : 'ies'} · {t.booked} booked · INR {plain(t.total)}</Text>
               </View>
               <View style={s.thead} wrap={false}>
-                <Text style={[s.th, { flex: col.ref }]}>Bill no.</Text><Text style={[s.th, { flex: col.name }]}>Customer</Text><Text style={[s.th, { flex: col.event }]}>Event</Text>
+                <Text style={[s.th, { flex: col.ref }]}>Bill no.</Text><Text style={[s.th, { flex: col.name }]}>Customer</Text><Text style={[s.th, { flex: col.contact }]}>Mobile / E-mail</Text><Text style={[s.th, { flex: col.event }]}>Event</Text>
                 <Text style={[s.th, { flex: col.date }]}>Date</Text><Text style={[s.th, { flex: col.guests, textAlign: 'right' }]}>Guests</Text><Text style={[s.th, { flex: col.status, textAlign: 'center' }]}>Status</Text>
                 <Text style={[s.th, { flex: col.total, textAlign: 'right' }]}>Total</Text><Text style={[s.th, { flex: col.recv, textAlign: 'right' }]}>Received</Text><Text style={[s.th, { flex: col.bal, textAlign: 'right' }]}>Balance</Text>
               </View>
@@ -59,7 +59,8 @@ export function ReportDocument({ title, quotes, business }: { title: string; quo
                 return (
                   <View key={q.id} style={s.row} wrap={false}>
                     <Text style={{ flex: col.ref, fontFamily: 'Helvetica-Bold' }}>{q.reference}</Text>
-                    <View style={{ flex: col.name }}><Text style={{ fontFamily: 'Helvetica-Bold' }}>{q.customer.name}</Text><Text style={{ color: C.muted, fontSize: 7.5 }}>{q.customer.mobile}</Text></View>
+                    <View style={{ flex: col.name }}><Text style={{ fontFamily: 'Helvetica-Bold' }}>{q.customer.name}</Text></View>
+                    <View style={{ flex: col.contact }}><Text>{q.customer.mobile || '-'}</Text><Text style={{ color: C.muted, fontSize: 7.5 }}>{q.customer.email || '-'}</Text></View>
                     <Text style={{ flex: col.event }}>{q.customer.eventType}</Text>
                     <Text style={{ flex: col.date }}>{formatEventDates(quoteDates(q.customer))}</Text>
                     <Text style={{ flex: col.guests, textAlign: 'right' }}>{plain(q.customer.guests)}</Text>

@@ -1,21 +1,25 @@
 import { useEffect, useState } from 'react';
-import { Building2, Database, FileClock, FileText, Hash, Loader2, Save, Users, Wallet } from 'lucide-react';
+import { Building2, Database, DatabaseBackup, Eye, FileClock, FileText, Hash, Loader2, Save, Users, Wallet } from 'lucide-react';
 import { ActivityTab, BillingTab, TeamTab } from './SettingsExtra';
+import { BackupPanel } from './BackupPanel';
+import { useBackupStatus } from '@/lib/dataTools';
 import { Badge, Button, Card, CardHeader, Field, Input, Switch, Textarea, useUi } from '@/components/ui';
 import { backendMode, useBusiness, usePayment, useSaveSettings } from '@/lib/api';
 import { sampleQuote } from '@/lib/backend';
 import { isValidGstin, isValidIfsc, isValidUpiId } from '@/lib/settings';
 import type { BusinessProfile, PaymentSettings } from '@/lib/types';
-import { buildBillBlob, openBlob } from '@/pdf/generate';
+import { buildBillBlob } from '@/pdf/generate';
+import { usePdfPreview } from '@/components/PdfPreview';
 import { cn } from '@/lib/format';
 
-type Tab = 'business' | 'payment' | 'billing' | 'team' | 'activity' | 'system';
+type Tab = 'business' | 'payment' | 'billing' | 'team' | 'activity' | 'backup' | 'system';
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'business', label: 'Business & bills', icon: <Building2 size={16} /> },
   { id: 'payment', label: 'Payments', icon: <Wallet size={16} /> },
   { id: 'billing', label: 'Bill numbers', icon: <Hash size={16} /> },
   { id: 'team', label: 'Team', icon: <Users size={16} /> },
   { id: 'activity', label: 'Activity', icon: <FileClock size={16} /> },
+  { id: 'backup', label: 'Backup & restore', icon: <DatabaseBackup size={16} /> },
   { id: 'system', label: 'System', icon: <Database size={16} /> },
 ];
 
@@ -26,6 +30,9 @@ export function SettingsPage() {
   const saveBusiness = useSaveSettings('business');
   const savePayment = useSaveSettings('payment');
   const [tab, setTab] = useState<Tab>('business');
+  // the Backup & restore tab only exists when the Eventora team switched it on for this business
+  const { status: backup } = useBackupStatus(true);
+  const showBackup = backup.enabled || backup.viewing;
   const [b, setB] = useState<BusinessProfile>(business);
   const [p, setP] = useState<PaymentSettings>(payment);
   const [previewing, setPreviewing] = useState(false);
@@ -59,17 +66,14 @@ export function SettingsPage() {
     if (p.ifsc && !isValidIfsc(p.ifsc)) { toast('IFSC should look like HDFC0001234.', 'error'); return; }
     savePayment.mutate(p, { onSuccess: () => toast('Payment details saved.'), onError: (e) => toast(e.message, 'error') });
   };
-  const preview = async () => {
-    setPreviewing(true);
-    try { openBlob(await buildBillBlob({ ...sampleQuote(), customer: { ...sampleQuote().customer, hall: b.name } }, b, p, 'quotation')); }
-    catch (e) { toast(e instanceof Error ? e.message : 'Could not create the preview.', 'error'); }
-    finally { setPreviewing(false); }
-  };
+  const { preview: openPreview, element: previewElement } = usePdfPreview();
+  const preview = () => openPreview({ title: 'Sample quotation', eyebrow: 'Preview', filename: 'sample-quotation.pdf', build: () => buildBillBlob({ ...sampleQuote(), customer: { ...sampleQuote().customer, hall: b.name } }, b, p, 'quotation') });
 
   return (
     <div className="space-y-6">
+      {previewElement}
       <div className="flex flex-wrap gap-2">
-        {TABS.map((t) => <button key={t.id} type="button" onClick={() => setTab(t.id)} className={cn('flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors', tab === t.id ? 'bg-gold text-text-on-gold' : 'bg-surface text-text-secondary hover:text-text')}>{t.icon}{t.label}</button>)}
+        {TABS.filter((t) => t.id !== 'backup' || showBackup).map((t) => <button key={t.id} type="button" onClick={() => setTab(t.id)} className={cn('flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors', tab === t.id ? 'bg-gold text-text-on-gold' : 'bg-surface text-text-secondary hover:text-text')}>{t.icon}{t.label}</button>)}
       </div>
 
       {tab === 'business' && (
@@ -101,7 +105,7 @@ export function SettingsPage() {
             <CardHeader title="Preview" subtitle="See how your bill looks" />
             <div className="space-y-3 p-5 text-sm text-text-secondary">
               <p>Opens a sample quotation using the details on the left (even before you save).</p>
-              <Button variant="outline" className="w-full" onClick={preview} disabled={previewing}>{previewing ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />} Preview sample PDF</Button>
+              <Button variant="outline" className="w-full" onClick={preview} disabled={previewing}>{previewing ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />} Preview sample PDF</Button>
             </div>
           </Card>
         </div>
@@ -127,6 +131,7 @@ export function SettingsPage() {
       {tab === 'billing' && <BillingTab />}
       {tab === 'team' && <TeamTab />}
       {tab === 'activity' && <ActivityTab />}
+      {tab === 'backup' && showBackup && <BackupPanel viewing={backup.viewing} />}
 
       {tab === 'system' && (
         <Card className="max-w-3xl">

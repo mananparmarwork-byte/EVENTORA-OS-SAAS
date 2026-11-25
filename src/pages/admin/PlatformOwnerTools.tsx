@@ -1,12 +1,43 @@
 import { useEffect, useState } from 'react';
-import { Building2, Copy, KeyRound, Loader2, MessageCircle, Save, Send, Wand2 } from 'lucide-react';
-import { Button, Field, Input, Select, Textarea, useUi } from '@/components/ui';
-import { usePlatformExt, useTenantMeta } from '@/lib/apiExt';
+import { Building2, Copy, KeyRound, Loader2, MessageCircle, Save, Send, Trash2, Wand2 } from 'lucide-react';
+import { Badge, Button, Field, Input, Select, Spinner, Textarea, useUi } from '@/components/ui';
+import { usePlatformBranches, usePlatformExt, useTenantMeta } from '@/lib/apiExt';
 import { makePassword } from '@/pages/admin/PlatformOwners';
 import { whatsappLink } from '@/lib/settings';
 import type { SubRow } from '@/lib/types';
 
 const TYPES = ['Banquet hall', 'Party plot', 'Restaurant', 'Hotel', 'Resort', 'Event company', 'Caterer', 'Other'];
+
+/** Software owner only: every branch of this business, with a delete button. Customers never see this. */
+function BranchDelete({ tenantId }: { tenantId: string }) {
+  const { toast, confirm } = useUi();
+  const { data = [], isLoading, error } = usePlatformBranches(tenantId);
+  const { deleteBranch } = usePlatformExt();
+  const remove = async (b: { id: string; name: string; bills: number; staff: number }) => {
+    const ok = await confirm({
+      title: `Delete branch “${b.name}”?`,
+      text: `${b.bills} bill${b.bills === 1 ? '' : 's'} and ${b.staff} employee${b.staff === 1 ? '' : 's'} of this branch will move to the Main branch. The customer cannot undo this.`,
+      confirmLabel: 'Delete branch', danger: true,
+    });
+    if (!ok) return;
+    deleteBranch.mutate({ tenantId, branchId: b.id }, { onSuccess: (r) => toast(`Branch deleted. ${r.billsMoved} bill${r.billsMoved === 1 ? '' : 's'} moved to Main.`), onError: (e) => toast(e.message, 'error') });
+  };
+  return (
+    <section className="space-y-3">
+      <div><h3 className="font-semibold text-text">Branches</h3><p className="text-xs text-text-secondary">Only you can delete a branch. The customer can add and edit branches but has no delete button.</p></div>
+      {isLoading ? <Spinner label="Loading branches" /> : error ? <p className="text-sm text-error">{(error as Error).message}</p> : (
+        <ul className="divide-y divide-border/60 rounded-xl border border-border">
+          {data.map((b) => (
+            <li key={b.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+              <span className="min-w-0"><span className="flex items-center gap-2 font-medium text-text">{b.name}{b.isMain && <Badge tone="gold">Main</Badge>}{!b.active && <Badge tone="neutral">Off</Badge>}</span><span className="block text-xs text-text-secondary">{b.bills} bill{b.bills === 1 ? '' : 's'} · {b.staff} employee{b.staff === 1 ? '' : 's'}</span></span>
+              {!b.isMain && <Button size="sm" variant="outline" className="text-error" onClick={() => void remove(b)} disabled={deleteBranch.isPending}><Trash2 size={13} /> Delete</Button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 /** Inside "Manage customer": business details, branch slots, password reset and a quick message. */
 export function OwnerTools({ row }: { row: SubRow }) {
@@ -47,6 +78,8 @@ export function OwnerTools({ row }: { row: SubRow }) {
           <Button variant="outline" onClick={saveLimit} disabled={setBranchLimit.isPending}><Building2 size={14} /> Set branches</Button>
         </div>
       </section>
+
+      <BranchDelete tenantId={row.id} />
 
       <section className="space-y-3">
         <div><h3 className="font-semibold text-text">Owner login</h3><p className="text-xs text-text-secondary">Forgot password? Set a new one here and send it to them.</p></div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { AlertTriangle, Building2, CheckCircle2, Clock, Copy, Download, FileText, Landmark, Loader2, MessageCircle, Minus, Plus, Send, Trash2 } from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, Clock, Copy, Download, Eye, FileText, Landmark, Loader2, MessageCircle, Minus, Plus, Send, Trash2 } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Spinner, Switch, useUi } from '@/components/ui';
 import { UpiQr } from '@/components/UpiQr';
 import { useBranchInfo } from '@/lib/branch';
@@ -9,7 +9,8 @@ import { useBusiness, usePlans, useSubscription } from '@/lib/api';
 import { cn, fmtDate, inr, todayISO } from '@/lib/format';
 import { perLabel, planName } from '@/lib/plans';
 import { isValidUpiId, whatsappLink } from '@/lib/settings';
-import { buildInvoiceBlob, invoiceFileName, saveBlob } from '@/pdf/generate';
+import { buildInvoiceBlob, invoiceFileName } from '@/pdf/generate';
+import { usePdfPreview } from '@/components/PdfPreview';
 import type { Invoice, Subscription } from '@/lib/types';
 
 const daysLeft = (iso: string | null) => (iso ? Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 864e5)) : 0);
@@ -41,12 +42,14 @@ const MAX_NEW = 5;
 
 function InvoiceRow({ inv }: { inv: Invoice }) {
   const { toast } = useUi();
-  const [busy, setBusy] = useState(false);
-  const get = async () => { setBusy(true); try { saveBlob(await buildInvoiceBlob(inv), invoiceFileName(inv)); } catch (e) { toast(e instanceof Error ? e.message : 'Could not make the PDF.', 'error'); } finally { setBusy(false); } };
+  const { preview, element } = usePdfPreview();
+  const busy = false;
+  const get = () => preview({ title: `Invoice ${inv.number}`, eyebrow: 'Preview', filename: invoiceFileName(inv), build: () => buildInvoiceBlob(inv) });
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 text-sm">
       <span className="min-w-0"><span className="block font-medium text-text">{inv.number}</span><span className="block truncate text-xs text-text-secondary">{fmtDate(inv.issuedAt)} · {inv.items.map((i) => i.description).join(', ')}</span></span>
-      <span className="flex items-center gap-3"><span className="font-semibold text-text tabular">{inr(inv.total)}</span><Button size="sm" variant="outline" onClick={() => void get()} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} PDF</Button></span>
+      <span className="flex items-center gap-3"><span className="font-semibold text-text tabular">{inr(inv.total)}</span><Button size="sm" variant="outline" onClick={get} disabled={busy}><Eye size={13} /> Preview</Button></span>
+      {element}
     </li>
   );
 }
@@ -70,8 +73,6 @@ export function BillingPage() {
   const [keep, setKeep] = useState(0);
   const [names, setNames] = useState<string[]>([]);
   const [reference, setReference] = useState('');
-  const [paidOn, setPaidOn] = useState(todayISO());
-  const [amount, setAmount] = useState('');
   const inited = useRef(false);
 
   // sensible starting choices once the plan is known: renew when it is ending / ended, otherwise just branches
@@ -90,7 +91,6 @@ export function BillingPage() {
   const wantsAnything = effRenew || names.length > 0;
   const quote = useBillingQuote({ renew: effRenew, period: effRenew ? period : '', keep: effRenew ? keep : extras, newCount: names.length }, Boolean(sub) && wantsAnything && (!effRenew || period !== ''));
   const q = quote.data;
-  useEffect(() => { if (q) setAmount(String(q.total)); }, [q?.total]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <Spinner label="Loading billing" />;
   const line = sub ? statusLine(sub, planName(allPlans, sub.period)) : null;
@@ -107,7 +107,7 @@ export function BillingPage() {
     if (!q) { toast(quote.error?.message ?? 'Choose what you want to pay for.', 'error'); return; }
     if (names.some((n) => n.trim().length < 2)) { toast('Enter a name for every new branch.', 'error'); return; }
     if (needsRef && reference.trim().length < 4) { toast('Enter the UPI transaction ID (UTR) so we can find your payment.', 'error'); return; }
-    create.mutate({ kind: 'renewal', payload: { renew: effRenew, period: effRenew ? period : '', keep: effRenew ? keep : extras, newBranches: names.map((n) => ({ name: n.trim() })), reference: reference.trim(), amount: amount.trim() || String(total), paidOn } },
+    create.mutate({ kind: 'renewal', payload: { renew: effRenew, period: effRenew ? period : '', keep: effRenew ? keep : extras, newBranches: names.map((n) => ({ name: n.trim() })), reference: reference.trim(), amount: String(total), paidOn: todayISO() } },
       { onSuccess: () => { toast('Request sent. We will check the payment and switch everything on.'); setReference(''); setNames([]); }, onError: (e) => toast(e.message, 'error') });
   };
 
@@ -195,7 +195,7 @@ export function BillingPage() {
 
         {/* ---------------------------------------------------- pay + send */}
         <Card className="h-fit xl:sticky xl:top-24">
-          <CardHeader title="Pay by UPI" subtitle="Scan, pay, then send us the transaction ID" action={<Landmark size={16} className="text-gold" />} />
+          <CardHeader title="Pay by UPI" subtitle="Scan the QR, pay the exact amount, then enter the transaction ID" action={<Landmark size={16} className="text-gold" />} />
           <div className="space-y-5 p-5">
             {total > 0 ? (
               upiOk ? (
@@ -212,13 +212,9 @@ export function BillingPage() {
 
             <div className="space-y-4 border-t border-border/70 pt-5">
               {pending.length > 0 && <p className="rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-xs text-warning">You already have {pending.length} request{pending.length === 1 ? '' : 's'} waiting for approval. Only send another if this is a different payment.</p>}
-              <Field label="UPI transaction ID (UTR)" required={needsRef} hint="from your payment app"><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. 412833910075" /></Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Amount paid (₹)"><Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" /></Field>
-                <Field label="Paid on"><Input type="date" max={todayISO()} value={paidOn} onChange={(e) => setPaidOn(e.target.value)} /></Field>
-              </div>
+              <Field label="UPI transaction ID (UTR)" required={needsRef} hint="from your payment app after you pay"><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. 412833910075" /></Field>
               <Button variant="gold" size="lg" className="w-full" onClick={send} disabled={create.isPending || !q}>{create.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Send request to Eventora</Button>
-              <p className="text-center text-[11px] text-text-disabled">After we approve it, your plan and branches update and your invoice appears below.</p>
+              <p className="text-center text-[11px] text-text-disabled">Pay the exact amount shown, enter the transaction ID and send. We check the payment and switch your software on.</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {wa && <a href={whatsappLink(wa, 'Hello, I use Eventora OS and have a question about my payment.')} target="_blank" rel="noreferrer"><Button variant="ghost" size="sm"><MessageCircle size={14} /> WhatsApp us</Button></a>}
                 {info.phone && <a href={`tel:${info.phone}`}><Button variant="ghost" size="sm">Call {info.phone}</Button></a>}

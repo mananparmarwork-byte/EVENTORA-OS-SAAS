@@ -5,8 +5,8 @@ import { ALL, useBranchScope } from './branch';
 import { cleanBusiness, cleanPayment } from './settings';
 import { cloneCatalog } from './catalog';
 import { FALLBACK_PLANS } from './plans';
-import { billDeleted, billUpdated, statusChanged } from './activity';
-import { DEFAULT_ACTIVITY_SETTINGS, DEFAULT_NUMBERING, DEFAULT_PERMISSIONS, type ActivityDraft, type ActivityEntry, type ActivitySettings, type BusinessProfile, type CatalogCategory, type NumberingSettings, type PaymentSettings, type Quote, type QuoteInput, type QuotePricing, type QuoteStatus, type Session, type StaffMember, type StaffPermissions, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type PurchaseStatus, type PlatformDashboard, type SubRow, type TenantPayment, type CollectionRow, type CollectedPayment, type FollowUp, type FollowUpAction } from './types';
+import { billDeleted, billUpdated, draftCompleted, statusChanged } from './activity';
+import { DEFAULT_ACTIVITY_SETTINGS, DEFAULT_NUMBERING, DEFAULT_PERMISSIONS, type ActivityDraft, type ActivityEntry, type ActivitySettings, type BusinessProfile, type CatalogCategory, type EnquiryInput, type NumberingSettings, type PaymentSettings, type Quote, type QuoteInput, type QuotePricing, type QuoteStatus, type Session, type StaffMember, type StaffPermissions, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type PurchaseStatus, type PlatformDashboard, type SubRow, type TenantPayment, type CollectionRow, type CollectedPayment, type FollowUp, type FollowUpAction } from './types';
 
 const BUSINESS_FALLBACK = cleanBusiness(null);
 const PAYMENT_FALLBACK = cleanPayment(null);
@@ -50,6 +50,13 @@ export function useQuotes(opts?: { all?: boolean }) {
   const select = useCallback((list: Quote[]) => (wanted === ALL ? list : list.filter((q) => q.branchId === wanted)), [wanted]);
   return useQuery<Quote[], Error, Quote[]>({ queryKey: keys.quotes, queryFn: () => be().listQuotes(), refetchOnWindowFocus: true, select });
 }
+/** Public enquiry page: no sign-in needed. */
+export function useEnquiryInfo(slug: string) {
+  return useQuery({ queryKey: ['enquiry-info', slug], queryFn: () => be().enquiryInfo(slug), enabled: Boolean(slug), retry: false, staleTime: 60_000 });
+}
+export function useSubmitEnquiry(slug: string) {
+  return useMutation({ mutationFn: (input: EnquiryInput) => be().submitEnquiry(slug, input) });
+}
 export function useQuote(reference: string, enabled = true) {
   return useQuery<Quote | null>({ queryKey: keys.quote(reference), queryFn: () => be().getQuote(reference), enabled: enabled && Boolean(reference) });
 }
@@ -87,7 +94,11 @@ export function useUpdateQuote() {
   const done = useInvalidateQuotes();
   const log = useLogger();
   return useMutation({
-    mutationFn: async (v: { reference: string; input: QuoteInput; before: Quote }) => { await be().updateQuote(v.reference, v.input); await log(billUpdated(v.before, { ...v.before, ...v.input })); },
+    /** `status: 'new'` is passed when a customer's draft is turned into a real quotation by saving it. */
+    mutationFn: async (v: { reference: string; input: QuoteInput; before: Quote; status?: QuoteStatus }) => {
+      await be().updateQuote(v.reference, v.input, v.status);
+      await log(v.status && v.before.status === 'draft' ? draftCompleted(v.before, { ...v.before, ...v.input }) : billUpdated(v.before, { ...v.before, ...v.input }));
+    },
     onSuccess: (_d, v) => done(v.reference),
   });
 }

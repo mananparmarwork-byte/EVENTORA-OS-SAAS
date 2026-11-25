@@ -5,7 +5,7 @@ import { computeTotals, lineTotal, quoteAdvance } from './pricing';
 import { newId } from './settings';
 import { makeSaasExt, unsupportedExt, type SaasExt } from './backendExt';
 import { localISODate } from './format';
-import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck, type PurchaseStatus, type PlatformDashboard, type SubRow, type TenantPayment, type CollectionRow, type CollectedPayment, type FollowUp, type FollowUpAction, type ReminderResult } from './types';
+import { type ActivityDraft, type ActivityEntry, type CatalogCategory, type EnquiryInfo, type EnquiryInput, type Quote, type QuoteInput, type QuotePricing, type QuoteService, type QuoteStatus, type Role, type Session, type StaffMember, type TimeRange, type BillingPeriod, type SubStatus, type Subscription, type TenantRow, type Plan, type Coupon, type CouponCheck, type PurchaseStatus, type PlatformDashboard, type SubRow, type TenantPayment, type CollectionRow, type CollectedPayment, type FollowUp, type FollowUpAction, type ReminderResult } from './types';
 
 /**
  * Every screen talks to the database ONLY through this interface.
@@ -68,7 +68,12 @@ export interface Backend extends SaasExt {
   listStaff(): Promise<StaffMember[]>;
   setStaffActive(id: string, active: boolean): Promise<void>;
   createStaff(email: string, password: string, branchId?: string): Promise<void>;
-  updateQuote(reference: string, input: QuoteInput): Promise<void>;
+  /** `status` is only passed when a draft is turned into a quotation (draft → new) in the same save. */
+  updateQuote(reference: string, input: QuoteInput, status?: QuoteStatus): Promise<void>;
+  /** Public (no sign-in): what the customer enquiry page shows for a business link. */
+  enquiryInfo(slug: string): Promise<EnquiryInfo>;
+  /** Public (no sign-in): a customer submits the enquiry form; it is saved as a new draft bill. */
+  submitEnquiry(slug: string, input: EnquiryInput): Promise<{ reference: string }>;
   updatePricing(reference: string, pricing: QuotePricing): Promise<void>;
   setStatus(reference: string, status: QuoteStatus): Promise<void>;
   deleteQuote(reference: string): Promise<void>;
@@ -122,7 +127,7 @@ function fromRow(row: QuoteRow): Quote {
     reference: row.reference,
     customer: {
       name: row.customer_name, mobile: row.mobile, eventType: row.event_type, eventDate: row.event_date, eventDates: dates,
-      eventSlots: normalizeEventSlots(row.pricing?.eventSlots), email: typeof (row.pricing as { customerEmail?: unknown })?.customerEmail === 'string' ? (row.pricing as { customerEmail?: string }).customerEmail : '', guests: row.guests, gstNumber: row.customer_gst_number ?? '', hall: row.hall,
+      eventSlots: normalizeEventSlots(row.pricing?.eventSlots), email: typeof (row.pricing as { customerEmail?: unknown })?.customerEmail === 'string' ? (row.pricing as { customerEmail?: string }).customerEmail : '', guests: row.guests, gstNumber: row.customer_gst_number ?? '', panNumber: typeof row.pricing?.customerPan === 'string' ? row.pricing.customerPan : '', hall: row.hall,
     },
     services: Array.isArray(row.services) ? row.services : [],
     pricing: {
@@ -146,7 +151,7 @@ const toRow = (input: QuoteInput) => ({
   customer_gst_number: input.customer.gstNumber ?? '',
   hall: input.customer.hall,
   services: input.services,
-  pricing: { ...input.pricing, eventDates: input.customer.eventDates ?? [input.customer.eventDate], eventSlots: input.customer.eventSlots ?? {}, customerEmail: input.customer.email ?? '' },
+  pricing: { ...input.pricing, eventDates: input.customer.eventDates ?? [input.customer.eventDate], eventSlots: input.customer.eventSlots ?? {}, customerEmail: input.customer.email ?? '', customerPan: input.customer.panNumber ?? '' },
 });
 
 type ActivityRow = { branch_id?: string | null; id: string; at: string; actor_email: string | null; actor_role: string | null; action: ActivityEntry['action']; reference: string | null; title: string; detail: string | null; data: ActivityEntry['data'] | null };
@@ -449,10 +454,10 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
       const { error } = await client.rpc('platform_set_subscription', { p_tenant: tenantId, p_status: status, p_extend_days: extendDays });
       if (error) throw new Error(error.message);
     },
-    async updateQuote(reference, input) {
+    async updateQuote(reference, input, status) {
       const { reference: _ref, ...fields } = toRow(input);
       void _ref;
-      const { data, error } = await client.from('quotes').update(fields).eq('reference', reference).select('reference');
+      const { data, error } = await client.from('quotes').update(status ? { ...fields, status } : fields).eq('reference', reference).select('reference');
       if (error) throw error;
       if (!data || data.length === 0) throw new Error(NOT_ALLOWED);
     },
@@ -469,6 +474,17 @@ function makeSupabaseBackend(client: SupabaseClient): Backend {
     async deleteQuote(reference) {
       const { error } = await client.from('quotes').delete().eq('reference', reference);
       if (error) throw error;
+    },
+    async enquiryInfo(slug) {
+      const { data, error } = await client.rpc('enquiry_info', { p_slug: slug });
+      if (error) throw new Error(/enquiry_info/.test(error.message) ? 'The enquiry link is not switched on yet. Run supabase/23-enquiry-link-drafts.sql once.' : error.message);
+      const d = (data ?? {}) as Partial<EnquiryInfo>;
+      return { found: Boolean(d.found), name: d.name ?? '', phone: d.phone ?? '', open: d.open !== false, branches: Array.isArray(d.branches) ? d.branches : [] };
+    },
+    async submitEnquiry(slug, input) {
+      const { data, error } = await client.rpc('submit_enquiry', { p_slug: slug, p: input });
+      if (error) throw new Error(error.message);
+      return { reference: String((data as { reference?: string } | null)?.reference ?? '') };
     },
     async bookedTimes(branchId) {
       const { data, error } = await client.rpc('booked_times', { p_branch: branchId ?? null });
@@ -669,7 +685,9 @@ function makeHttpBackend(apiUrl: string): Backend {
     async listStaff() { return call<StaffMember[]>('staff.list'); },
     async setStaffActive(id, active) { await call('staff.setActive', { id, active }); },
     async createStaff(email, password) { await call('staff.create', { email, password }); },
-    async updateQuote(reference, input) { await call('quotes.update', { reference, input }); },
+    async updateQuote(reference, input, status) { await call('quotes.update', { reference, input, ...(status ? { status } : {}) }); },
+    async enquiryInfo() { throw new Error('The customer enquiry link needs the Supabase version of Eventora.'); },
+    async submitEnquiry() { throw new Error('The customer enquiry link needs the Supabase version of Eventora.'); },
     async updatePricing(reference, pricing) { await call('quotes.pricing', { reference, pricing }); },
     async setStatus(reference, status) { await call('quotes.status', { reference, status }); },
     async deleteQuote(reference) { await call('quotes.delete', { reference }); },

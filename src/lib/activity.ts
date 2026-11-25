@@ -32,6 +32,12 @@ export function billDeleted(q: Quote): ActivityDraft {
   return { action: 'bill.deleted', reference: q.reference, title: `Bill ${q.reference} deleted`, detail: `${who(q)} · total ${inr(q.pricing.grandTotal)}${received > 0 ? ` · ${inr(received)} had been received` : ''}`, data: snapshot(q) };
 }
 
+/** A customer's draft became a real quotation (Step 2 filled in and saved). */
+export function draftCompleted(before: Quote, after: Quote): ActivityDraft {
+  const changes = diffBills(before, after);
+  return { action: 'bill.updated', reference: after.reference, title: `Enquiry ${after.reference} turned into a quotation`, detail: `${who(after)} · total ${inr(after.pricing.grandTotal)}`, data: { ...snapshot(after), changes } };
+}
+
 export function statusChanged(q: Quote, booked: boolean): ActivityDraft {
   return { action: booked ? 'bill.booked' : 'bill.released', reference: q.reference, title: booked ? `Bill ${q.reference} marked as booked` : `Booking released for ${q.reference}`, detail: `${who(q)} · ${formatEventDates(quoteDates(q.customer))}`, data: snapshot(q) };
 }
@@ -65,6 +71,7 @@ export function diffBills(a: Quote, b: Quote): ActivityChange[] {
   same('Event type', a.customer.eventType, b.customer.eventType);
   same('Guests', a.customer.guests, b.customer.guests);
   same('Customer GSTIN', a.customer.gstNumber ?? '', b.customer.gstNumber ?? '');
+  same('Customer PAN', a.customer.panNumber ?? '', b.customer.panNumber ?? '');
   const da = quoteDates(a.customer), db = quoteDates(b.customer);
   same('Event dates', formatEventDates(da), formatEventDates(db));
   [...new Set([...da, ...db])].sort().forEach((d) => {

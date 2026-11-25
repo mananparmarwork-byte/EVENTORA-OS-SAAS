@@ -40,6 +40,8 @@ export type QuoteCustomer = {
   eventSlots?: EventSlots;
   guests: number;
   gstNumber?: string;
+  /** optional PAN of the customer (10 characters, e.g. ABCDE1234F), printed on the bill like the GSTIN */
+  panNumber?: string;
   /** optional e-mail of the customer, used for payment requests and reminders */
   email?: string;
   hall: string;
@@ -58,6 +60,11 @@ export type QuotePricing = {
   gstNumber: string;
   gstNumberVisible: boolean;
   customerGstNumberVisible?: boolean;
+  /** the customer's PAN lives here (no extra database column needed) */
+  customerPan?: string;
+  customerPanVisible?: boolean;
+  /** 'enquiry-link' when the customer filled the public form themselves */
+  source?: string;
   showCostPerGuest?: boolean;
   eventDates?: string[];
   eventSlots?: EventSlots;
@@ -73,7 +80,8 @@ export type QuotePricing = {
   payments?: QuotePayment[];
 };
 
-export type QuoteStatus = 'new' | 'contacted' | 'confirmed' | 'archived';
+/** 'draft' = a customer filled the public enquiry link; no services or price yet. Saving it from the bill form turns it into 'new'. */
+export type QuoteStatus = 'draft' | 'new' | 'contacted' | 'confirmed' | 'archived';
 export type QuoteInput = { reference: string; customer: QuoteCustomer; services: QuoteService[]; pricing: QuotePricing; /** which branch the bill belongs to (owner picks; employees are always put in their own branch by the database) */ branchId?: string };
 export type Quote = QuoteInput & { id: string; createdAt: string; status: QuoteStatus };
 
@@ -254,3 +262,9 @@ export type Invoice = {
 };
 export type InvoicePatch = Partial<Pick<Invoice, 'items' | 'gstEnabled' | 'gstRate' | 'paymentRef' | 'notes' | 'planName'>> & { number?: string; billTo?: InvoiceParty; seller?: InvoiceParty; paid?: number; paidOn?: string; issuedAt?: string };
 export type InvoiceSettings = InvoiceParty & { prefix: string; next: number; gstEnabled: boolean; gstRate: number };
+
+/* ------------------------------------------------------- Public enquiry link --- */
+/** What the public form (a customer opening the business's link) needs to know. Branches are only the active ones. */
+export type EnquiryInfo = { found: boolean; name: string; phone: string; open: boolean; branches: { id: string; name: string }[] };
+/** What a customer sends. Bill number, GST and PAN are deliberately not part of it. */
+export type EnquiryInput = { name: string; mobile: string; email: string; eventType: string; guests: number; dates: string[]; slots: EventSlots; branchId?: string; /** honeypot: must stay empty */ website?: string };

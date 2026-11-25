@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Building2, Database, DatabaseBackup, Eye, FileClock, FileText, Hash, Loader2, Save, Users, Wallet } from 'lucide-react';
+import { Building2, Database, DatabaseBackup, Eye, FileClock, FileText, Globe, Hash, Loader2, Save, Users, Wallet } from 'lucide-react';
 import { ActivityTab, BillingTab, TeamTab } from './SettingsExtra';
 import { BackupPanel } from './BackupPanel';
+import { EnquiryLinkTab } from './EnquiryLinkTab';
 import { useBackupStatus } from '@/lib/dataTools';
 import { Badge, Button, Card, CardHeader, Field, Input, Switch, Textarea, useUi } from '@/components/ui';
 import { backendMode, useBusiness, usePayment, useSaveSettings } from '@/lib/api';
@@ -12,10 +13,11 @@ import { buildBillBlob } from '@/pdf/generate';
 import { usePdfPreview } from '@/components/PdfPreview';
 import { cn } from '@/lib/format';
 
-type Tab = 'business' | 'payment' | 'billing' | 'team' | 'activity' | 'backup' | 'system';
+type Tab = 'business' | 'payment' | 'enquiry' | 'billing' | 'team' | 'activity' | 'backup' | 'system';
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'business', label: 'Business & bills', icon: <Building2 size={16} /> },
   { id: 'payment', label: 'Payments', icon: <Wallet size={16} /> },
+  { id: 'enquiry', label: 'Enquiry link', icon: <Globe size={16} /> },
   { id: 'billing', label: 'Bill numbers', icon: <Hash size={16} /> },
   { id: 'team', label: 'Team', icon: <Users size={16} /> },
   { id: 'activity', label: 'Activity', icon: <FileClock size={16} /> },
@@ -128,6 +130,7 @@ export function SettingsPage() {
         </Card>
       )}
 
+      {tab === 'enquiry' && <EnquiryLinkTab />}
       {tab === 'billing' && <BillingTab />}
       {tab === 'team' && <TeamTab />}
       {tab === 'activity' && <ActivityTab />}

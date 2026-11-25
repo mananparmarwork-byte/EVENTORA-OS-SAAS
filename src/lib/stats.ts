@@ -30,7 +30,7 @@ export type Metric = 'revenue' | 'quotations' | 'booked';
 
 export type PeriodStats = { quotations: number; booked: number; revenue: number };
 export function totalsForPeriod(quotes: Quote[], p: { from: string; to: string }): PeriodStats {
-  const made = quotes.filter((q) => inPeriod(q.createdAt, p));
+  const made = quotes.filter((q) => q.status !== 'draft' && inPeriod(q.createdAt, p));
   return {
     quotations: made.length,
     booked: made.filter((q) => q.status === 'confirmed').length,
@@ -48,14 +48,14 @@ export function seriesFor(quotes: Quote[], r: Resolved, metric: Metric): number[
     if (i !== undefined) values[i] += amount;
   };
   if (metric === 'revenue') paymentEvents(quotes).forEach((e) => put(e.at, e.amount));
-  else quotes.filter((q) => metric === 'quotations' || q.status === 'confirmed').forEach((q) => put(q.createdAt, 1));
+  else quotes.filter((q) => q.status !== 'draft' && (metric === 'quotations' || q.status === 'confirmed')).forEach((q) => put(q.createdAt, 1));
   return values;
 }
 
 export function upcoming(quotes: Quote[], limit = 6) {
   const today = todayISO();
   return quotes
-    .filter((q) => q.status !== 'archived')
+    .filter((q) => q.status !== 'archived' && q.status !== 'draft')
     .map((q) => ({ quote: q, next: quoteDates(q.customer).filter((d) => d >= today).sort()[0] }))
     .filter((x): x is { quote: Quote; next: string } => Boolean(x.next))
     .sort((a, b) => a.next.localeCompare(b.next))

@@ -161,6 +161,7 @@ export function BillDocument({ quote, business, kind }: BillProps) {
               <Text style={s.boxName}>{customer.name}</Text>
               <Text style={s.lineMuted}>Mobile: {customer.mobile}</Text>
               {customer.gstNumber && pricing.customerGstNumberVisible !== false ? <Text style={s.lineMuted}>GSTIN: {customer.gstNumber}</Text> : null}
+              {customer.panNumber && pricing.customerPanVisible !== false ? <Text style={s.lineMuted}>PAN: {customer.panNumber}</Text> : null}
             </View>
             <View style={s.box}>
               <Text style={s.boxLabel}>Event details</Text>

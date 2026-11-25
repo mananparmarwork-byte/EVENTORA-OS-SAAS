@@ -31,7 +31,7 @@ export function Reports() {
   const logActivity = useLogActivity();
 
   const r = useMemo(() => resolveRange(range, earliestDate(quotes)), [range, quotes]);
-  const rows = useMemo(() => quotes.filter((q) => inPeriod(basis === 'event' ? quoteDates(q.customer)[0] ?? dayOf(q.createdAt) : q.createdAt, r)).filter((q) => { const d = dueInfo(q); return payFilter === 'all' || (payFilter === 'paid' ? d.isPaid : d.isUnpaid); }), [quotes, r, basis, payFilter]);
+  const rows = useMemo(() => quotes.filter((q) => q.status !== 'draft').filter((q) => inPeriod(basis === 'event' ? quoteDates(q.customer)[0] ?? dayOf(q.createdAt) : q.createdAt, r)).filter((q) => { const d = dueInfo(q); return payFilter === 'all' || (payFilter === 'paid' ? d.isPaid : d.isUnpaid); }), [quotes, r, basis, payFilter]);
   const dueRows = useMemo(() => rows.filter((q) => dueInfo(q).isUnpaid), [rows]);
   const { current: viewBranch } = useBranchScope();
   const { preview: openPreview, element: previewElement } = usePdfPreview();

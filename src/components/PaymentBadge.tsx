@@ -10,6 +10,7 @@ export function PaymentBadge({ state }: { state: PaymentState }) {
 }
 
 export function StatusBadge({ status }: { status: QuoteStatus }) {
+  if (status === 'draft') return <Badge tone="warning">Draft</Badge>;
   if (status === 'confirmed') return <Badge tone="success">Booked</Badge>;
   if (status === 'contacted') return <Badge tone="info">Contacted</Badge>;
   if (status === 'archived') return <Badge tone="neutral">Archived</Badge>;

@@ -7,6 +7,7 @@ import { isBackendConfigured } from '@/lib/backend';
 import { Estimator } from '@/pages/Estimator';
 import { Landing } from '@/pages/Landing';
 import { RequestAccess } from '@/pages/RequestAccess';
+import { Enquiry } from '@/pages/Enquiry';
 import { BranchesPage } from '@/pages/admin/BranchesPage';
 import { MessagesPage } from '@/pages/admin/MessagesPage';
 import { BillingPage } from '@/pages/admin/BillingPage';
@@ -88,6 +89,8 @@ export default function App() {
           <Switch>
             <Route path="/"><Home /></Route>
             <Route path="/request-access"><RequestAccess /></Route>
+            {/* the public customer enquiry form of one business: https://your-site/#/enquiry/<business-slug> (no sign-in) */}
+            <Route path="/enquiry/:slug">{(p) => <Enquiry slug={decodeURIComponent(p.slug).toLowerCase()} />}</Route>
             {/* the old self-service pages are gone: access is given manually */}
             <Route path="/signup"><Redirect to="/request-access" /></Route>
             <Route path="/buy"><Redirect to="/request-access" /></Route>

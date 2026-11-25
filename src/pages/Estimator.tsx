@@ -18,8 +18,9 @@ import { usePdfPreview } from '@/components/PdfPreview';
 const EVENT_TYPES = ['Wedding', 'Reception', 'Engagement', 'Birthday', 'Anniversary', 'Corporate', 'Other'];
 const DRAFT_KEY = 'eventora-estimate-draft-v1';
 
-type Details = { name: string; mobile: string; email: string; eventType: string; otherEventType: string; eventDate: string; guests: string; billNumber: string; customerGstNumber: string };
-const INITIAL: Details = { name: '', mobile: '', email: '', eventType: '', otherEventType: '', eventDate: '', guests: '150', billNumber: '', customerGstNumber: '' };
+type Details = { name: string; mobile: string; email: string; eventType: string; otherEventType: string; eventDate: string; guests: string; billNumber: string; customerGstNumber: string; customerPan: string };
+const INITIAL: Details = { name: '', mobile: '', email: '', eventType: '', otherEventType: '', eventDate: '', guests: '150', billNumber: '', customerGstNumber: '', customerPan: '' };
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 type Errors = Partial<Record<keyof Details, string>>;
 
 type Draft = {
@@ -57,6 +58,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
   const [gstRate, setGstRate] = useState(5);
   const [gstVisible, setGstVisible] = useState(true);
   const [custGstVisible, setCustGstVisible] = useState(true);
+  const [custPanVisible, setCustPanVisible] = useState(true);
   const [slots, setSlots] = useState<EventSlots>({});
   const [showCostPerGuest, setShowCostPerGuest] = useState(true);
   const [discountEnabled, setDiscountEnabled] = useState(false);
@@ -130,13 +132,14 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
     if (!q || editQuote) return;
     setEditQuote(q);
     const known = EVENT_TYPES.includes(q.customer.eventType) && q.customer.eventType !== 'Other';
-    setDetails({ name: q.customer.name, mobile: q.customer.mobile, email: q.customer.email ?? '', eventType: known ? q.customer.eventType : 'Other', otherEventType: known || q.customer.eventType === 'Other' ? '' : q.customer.eventType, eventDate: quoteDates(q.customer).join(','), guests: String(q.customer.guests), billNumber: q.reference, customerGstNumber: q.customer.gstNumber ?? '' });
+    setDetails({ name: q.customer.name, mobile: q.customer.mobile, email: q.customer.email ?? '', eventType: known ? q.customer.eventType : 'Other', otherEventType: known || q.customer.eventType === 'Other' ? '' : q.customer.eventType, eventDate: quoteDates(q.customer).join(','), guests: String(q.customer.guests), billNumber: q.reference, customerGstNumber: q.customer.gstNumber ?? '', customerPan: q.customer.panNumber ?? '' });
     setSelections(Object.fromEntries(q.services.map((s) => [s.id, s.pricingType === 'perUnit' ? s.quantity : 1])));
     setPriceOverrides(Object.fromEntries(q.services.map((s) => [s.id, s.unitPrice])));
     setGstEnabled(q.pricing.gstEnabled);
     setGstRate(Math.min(28, Math.max(0, Number(q.pricing.gstRate) || 0)));
     setGstVisible(q.pricing.gstNumberVisible);
     setCustGstVisible(q.pricing.customerGstNumberVisible !== false);
+    setCustPanVisible(q.pricing.customerPanVisible !== false);
     setShowCostPerGuest(q.pricing.showCostPerGuest !== false);
     setSlots(normalizeEventSlots(q.customer.eventSlots));
     const hadDiscount = Boolean(q.pricing.discountEnabled) && (q.pricing.discountAmount ?? 0) > 0;
@@ -226,6 +229,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
       }
     }
     if (!Number.isInteger(guests) || guests <= 0) e.guests = 'Guests must be more than zero.';
+    if (details.customerPan.trim() && !PAN_RE.test(details.customerPan.trim())) e.customerPan = 'A PAN has 10 characters: 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F).';
     if (editing && !details.billNumber.trim()) e.billNumber = 'Enter a bill number.';
     setErrors(e);
     if (Object.keys(e).length) toast('Please fix the highlighted fields.', 'error');
@@ -234,14 +238,15 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
 
   const buildInput = (): QuoteInput => ({
     reference: ownerOverride || shownNumber.trim() || 'Assigned on save',
-    customer: { name: details.name.trim(), mobile: details.mobile.trim(), email: details.email.trim(), eventType: eventTypeLabel(details), eventDate: dates[0] ?? '', eventDates: dates, eventSlots: slotsForDates, guests, gstNumber: details.customerGstNumber.trim(), hall: business.name },
+    customer: { name: details.name.trim(), mobile: details.mobile.trim(), email: details.email.trim(), eventType: eventTypeLabel(details), eventDate: dates[0] ?? '', eventDates: dates, eventSlots: slotsForDates, guests, gstNumber: details.customerGstNumber.trim(), panNumber: details.customerPan.trim(), hall: business.name },
     branchId: isStaff ? undefined : branchId,
     services: lines.map((l) => ({ id: l.id, name: l.name, category: l.categoryName, subcategory: l.subcategoryName, pricingType: l.pricingType, quantity: l.quantity, unitPrice: l.price, total: l.total, description: l.description })),
     pricing: {
-      foodPerPlate: totals.foodPerPlate, subtotal: totals.subtotal, gstEnabled, gstRate, gstAmount: totals.gstAmount, gstNumber: business.gstin, gstNumberVisible: gstVisible, customerGstNumberVisible: custGstVisible,
+      foodPerPlate: totals.foodPerPlate, subtotal: totals.subtotal, gstEnabled, gstRate, gstAmount: totals.gstAmount, gstNumber: business.gstin, gstNumberVisible: gstVisible, customerGstNumberVisible: custGstVisible, customerPanVisible: custPanVisible,
       showCostPerGuest, discountEnabled: totals.discountAmount > 0, discountPercent: totals.discountPercent, discountFlat: totals.discountFlat, discountAmount: totals.discountAmount,
       grandTotal: totals.grandTotal, costPerGuest: totals.costPerGuest, advancePaid: totals.advance.paid, advanceAmount: totals.advance.amount, balanceDue: totals.advance.balance,
       payments: editQuote?.pricing.payments ?? [],
+      ...(editQuote?.pricing.source ? { source: editQuote.pricing.source } : {}),
     },
   });
 
@@ -256,12 +261,16 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
     if (!session) { toast('Please sign in as the owner or an employee to save a quotation.', 'error'); navigate('/login'); return; }
     if (!validate()) return;
     const input = buildInput();
-    const done = (q: Quote) => {
+    const done = (q: Quote, fromDraft = false) => {
       setSaved(q);
       try { window.localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
-      toast(editing ? 'Changes saved.' : `Bill ${q.reference} saved.`);
+      toast(fromDraft ? `Enquiry ${q.reference} is now a quotation.` : editing ? 'Changes saved.' : `Bill ${q.reference} saved.`);
     };
-    if (editing) updateQuote.mutate({ reference: editRef, input, before: editQuote as Quote }, { onSuccess: () => done({ ...(editQuote as Quote), ...input }), onError: (err) => toast(err.message, 'error') });
+    /* a customer's draft (from the public enquiry link) becomes a normal quotation once it is saved here with at least one service;
+       without services it stays a draft, so the owner can first just correct the customer's details */
+    const wasDraft = editQuote?.status === 'draft';
+    const promote = wasDraft && lines.length > 0;
+    if (editing) updateQuote.mutate({ reference: editRef, input, before: editQuote as Quote, status: promote ? 'new' : undefined }, { onSuccess: () => done({ ...(editQuote as Quote), ...input, status: promote ? 'new' : (editQuote as Quote).status }, promote), onError: (err) => toast(err.message, 'error') });
     else createQuote.mutate({ input, overrideRef: ownerOverride || undefined }, { onSuccess: (q) => done(q), onError: (err) => toast(err.message, 'error') });
   };
 
@@ -349,7 +358,9 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
             <p className="mt-2 max-w-xl text-sm text-text-secondary">Choose your services, set the guest count and dates, and download a professional quotation.</p>
           </div>
         )}
-        {editing && editQuote && <div className="flex items-center gap-2 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-gold"><ShieldCheck size={16} /> Editing bill <strong>{editQuote.reference}</strong>. The bill number and booking status stay the same.</div>}
+        {editing && editQuote && (editQuote.status === 'draft'
+          ? <div className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-gold"><ShieldCheck size={16} className="mt-0.5 shrink-0" /><span>Draft <strong>{editQuote.reference}</strong> — filled in by the customer through your enquiry link. Confirm the details with them, choose the services in Step 2 and press <strong>Save changes</strong>: it then moves from Drafts into Quotations. (Saved without any service, it stays a draft.)</span></div>
+          : <div className="flex items-center gap-2 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-gold"><ShieldCheck size={16} /> Editing bill <strong>{editQuote.reference}</strong>. The bill number and booking status stay the same.</div>)}
 
         {/* 1 — event details */}
         <Card>
@@ -375,6 +386,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
             )}
             <Field as="div" label="Event date & time" required className="sm:col-span-2"><DatePicker value={details.eventDate} slots={slots} booked={booked} error={errors.eventDate} allowPast={editQuote ? quoteDates(editQuote.customer) : []} onChange={(v) => { set('eventDate', v); }} onSlotsChange={setSlots} /></Field>
             <Field label="Customer GST number" hint="Optional · shown on the bill"><Input value={details.customerGstNumber} onChange={(e) => set('customerGstNumber', e.target.value.toUpperCase().slice(0, 15))} placeholder="22AAAAA0000A1Z5" /></Field>
+            <Field label="Customer PAN number" error={errors.customerPan} hint="Optional · shown on the bill"><Input value={details.customerPan} onChange={(e) => set('customerPan', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))} placeholder="ABCDE1234F" className="font-mono" autoCapitalize="characters" spellCheck={false} /></Field>
           </div>
         </Card>
 
@@ -483,6 +495,7 @@ export function Estimator({ embedded = false, editRef = '' }: { embedded?: boole
               <Field label="GST rate (%)"><Input type="number" min={0} max={28} step={0.5} value={gstRate} onChange={(e) => setGstRate(Math.min(28, Math.max(0, Number(e.target.value) || 0)))} disabled={!gstEnabled} /></Field>
               <Switch checked={gstVisible} onChange={setGstVisible} label="Show my GSTIN on the bill" />
               <Switch checked={custGstVisible} onChange={setCustGstVisible} label="Show customer GSTIN on the bill" />
+              <Switch checked={custPanVisible} onChange={setCustPanVisible} label="Show customer PAN on the bill" />
               <Switch checked={showCostPerGuest} onChange={setShowCostPerGuest} label="Show cost per guest" />
             </div>
             <div className="space-y-4 lg:col-span-2">

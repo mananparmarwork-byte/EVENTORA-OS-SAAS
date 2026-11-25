@@ -65,7 +65,7 @@ function Compose({ initial }: { initial?: { tenantId: string } }) {
   const q = search.trim().toLowerCase();
   const list = useMemo(() => subs.filter((s) => !q || [s.name, s.ownerEmail ?? ''].some((v) => v.toLowerCase().includes(q))), [subs, q]);
 
-  const useTemplate = (id: string) => { const t = templates.find((x) => x.id === id); if (t) { setTitle(t.title); setBody(t.body); setKind(t.kind); } };
+  const applyTemplate = (id: string) => { const t = templates.find((x) => x.id === id); if (t) { setTitle(t.title); setBody(t.body); setKind(t.kind); } };
   const addToken = (t: string) => {
     const el = document.getElementById('compose-body') as HTMLTextAreaElement | null; const ins = `{${t}}`;
     if (!el) { setBody((b) => b + ins); return; }
@@ -98,7 +98,7 @@ function Compose({ initial }: { initial?: { tenantId: string } }) {
       <Card>
         <CardHeader title="New message" subtitle="Sent to the owner's inbox. Words in {curly brackets} are filled in for each business." />
         <div className="space-y-5 p-5">
-          <Field label="Start from a template" hint="optional"><Select value="" onChange={(e) => useTemplate(e.target.value)}><option value="">Choose a template…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
+          <Field label="Start from a template" hint="optional"><Select value="" onChange={(e) => applyTemplate(e.target.value)}><option value="">Choose a template…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
 
           <div>
             <p className="mb-2 text-xs font-medium text-text-secondary">Who gets it</p>

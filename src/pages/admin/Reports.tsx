@@ -33,14 +33,15 @@ export function Reports() {
   const r = useMemo(() => resolveRange(range, earliestDate(quotes)), [range, quotes]);
   const rows = useMemo(() => quotes.filter((q) => inPeriod(basis === 'event' ? quoteDates(q.customer)[0] ?? dayOf(q.createdAt) : q.createdAt, r)).filter((q) => { const d = dueInfo(q); return payFilter === 'all' || (payFilter === 'paid' ? d.isPaid : d.isUnpaid); }), [quotes, r, basis, payFilter]);
   const dueRows = useMemo(() => rows.filter((q) => dueInfo(q).isUnpaid), [rows]);
+  const { current: viewBranch } = useBranchScope();
+  const { preview: openPreview, element: previewElement } = usePdfPreview();
+
   if (isLoading) return <Spinner label="Loading reports" />;
 
   const sum = rows.reduce((a, q) => { const p = quotePaymentState(q.pricing); return { total: a.total + q.pricing.grandTotal, recv: a.recv + p.received, bal: a.bal + p.balance, booked: a.booked + (q.status === 'confirmed' ? 1 : 0) }; }, { total: 0, recv: 0, bal: 0, booked: 0 });
-  const { current: viewBranch } = useBranchScope();
   const title = `Report — ${r.label}${viewBranch ? ` · ${viewBranch.name}` : ''}${payFilter === 'all' ? '' : payFilter === 'paid' ? ' · Paid' : ' · Unpaid'}`;
   const fileKey = `${r.from}_${r.to}`;
 
-  const { preview: openPreview, element: previewElement } = usePdfPreview();
   const pdf = () => openPreview({ title, eyebrow: 'Report preview', filename: `eventora-report-${fileKey}.pdf`, build: () => buildReportBlob(title, rows, business) });
 
   const csv = () => {

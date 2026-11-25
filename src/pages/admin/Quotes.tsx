@@ -119,6 +119,7 @@ function Detail({ reference }: { reference: string }) {
   const canDelete = isAdmin; // employees can never delete bills
   const canBook = isAdmin || permissions.markBooked;
   const [busy, setBusy] = useState<BillKind | null>(null);
+  const { preview: openPreview, element: previewElement } = usePdfPreview();
 
   if (isLoading) return <Spinner label="Loading bill" />;
   if (!quote) return <Card className="p-10 text-center"><p className="text-text">That bill could not be found.</p><Link href="/admin/quotes" className="mt-3 inline-block text-sm text-gold hover:underline">Back to quotations</Link></Card>;
@@ -139,7 +140,6 @@ function Detail({ reference }: { reference: string }) {
     setStatus.mutate({ quote, status: booked ? 'new' : 'confirmed' }, { onSuccess: () => toast(booked ? 'Booking released.' : 'Marked as booked. The dates are now blocked.'), onError: (e) => toast(e.message, 'error') });
   };
 
-  const { preview: openPreview, element: previewElement } = usePdfPreview();
   const pdf = (kind: BillKind) => openPreview({
     title: `${kind === 'invoice' ? 'Invoice' : 'Quotation'} ${quote.reference}`,
     eyebrow: quote.customer.name,

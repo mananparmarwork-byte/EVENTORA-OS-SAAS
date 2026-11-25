@@ -3,11 +3,11 @@ import { fmtDate, formatEventDates, monthKey, monthLabel } from '@/lib/format';
 import { quotePaymentState, quoteDates } from '@/lib/pricing';
 import type { BusinessProfile, Quote } from '@/lib/types';
 
-const C = { navy: '#0B1733', gold: '#B8861B', goldBright: '#E6B84A', ivory: '#F7F5EF', ink: '#1B2437', muted: '#667085', line: '#E4E1D6', white: '#FFFFFF', green: '#2F7D55', red: '#B4474D' };
+const C = { navy: '#101D35', gold: '#2A66DB', goldBright: '#6AA2FF', ivory: '#F5F7FB', ink: '#172B4D', muted: '#64748B', line: '#E5EAF1', white: '#FFFFFF', green: '#2F7D55', red: '#B4474D' };
 const s = StyleSheet.create({
   page: { padding: 32, paddingBottom: 46, fontFamily: 'Helvetica', fontSize: 8.5, color: C.ink },
   head: { backgroundColor: C.navy, borderRadius: 8, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  title: { fontFamily: 'Times-Bold', fontSize: 18, color: C.white },
+  title: { fontFamily: 'Helvetica-Bold', fontSize: 18, color: C.white },
   sub: { fontSize: 8.5, color: C.goldBright, marginTop: 3, letterSpacing: 1, textTransform: 'uppercase' },
   stats: { flexDirection: 'row', marginTop: 12 },
   stat: { flex: 1, backgroundColor: C.ivory, borderWidth: 1, borderColor: C.line, borderRadius: 6, padding: 9, marginRight: 8 },

@@ -6,17 +6,17 @@ import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import { fmtDate } from '@/lib/format';
 import type { Invoice } from '@/lib/types';
 
-const C = { navy: '#0B1733', gold: '#B8861B', goldBright: '#E6B84A', ink: '#1B2437', muted: '#667085', line: '#E4E1D6', white: '#FFFFFF', green: '#2F7D55', ivory: '#F7F5EF' };
+const C = { navy: '#101D35', gold: '#2A66DB', goldBright: '#6AA2FF', ink: '#172B4D', muted: '#64748B', line: '#E5EAF1', white: '#FFFFFF', green: '#2F7D55', ivory: '#F5F7FB' };
 const money = (n: number) => `INR ${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number.isFinite(n) ? n : 0)}`;
 
 const s = StyleSheet.create({
   page: { paddingBottom: 60, fontFamily: 'Helvetica', fontSize: 9.5, color: C.ink, backgroundColor: C.white },
   band: { backgroundColor: C.navy, paddingHorizontal: 40, paddingTop: 30, paddingBottom: 24, flexDirection: 'row', justifyContent: 'space-between' },
   gold: { height: 3, backgroundColor: C.goldBright },
-  name: { fontFamily: 'Times-Bold', fontSize: 20, color: C.white },
-  sub: { fontSize: 8.5, color: '#C9D1E3', marginTop: 3, lineHeight: 1.4, maxWidth: 260 },
-  title: { fontFamily: 'Times-Bold', fontSize: 24, color: C.goldBright, textAlign: 'right' },
-  meta: { fontSize: 9, color: '#C9D1E3', textAlign: 'right', marginTop: 4 },
+  name: { fontFamily: 'Helvetica-Bold', fontSize: 20, color: C.white },
+  sub: { fontSize: 8.5, color: '#C9D6EE', marginTop: 3, lineHeight: 1.4, maxWidth: 260 },
+  title: { fontFamily: 'Helvetica-Bold', fontSize: 24, color: C.goldBright, textAlign: 'right' },
+  meta: { fontSize: 9, color: '#C9D6EE', textAlign: 'right', marginTop: 4 },
   body: { paddingHorizontal: 40, paddingTop: 24 },
   cols: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18 },
   box: { width: '48%', backgroundColor: C.ivory, borderRadius: 6, padding: 12 },

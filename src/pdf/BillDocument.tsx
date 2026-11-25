@@ -9,14 +9,13 @@ import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/render
 import { amountInWords, fmtDate, formatEventDates } from '@/lib/format';
 import { scheduleLines, timeText, durationText } from '@/lib/booking';
 import { quoteAdvance, quoteDates, discountLabel } from '@/lib/pricing';
-import { bankDetailsText } from '@/lib/settings';
 import type { BusinessProfile, PaymentSettings, Quote, QuoteService } from '@/lib/types';
 
 export type BillKind = 'quotation' | 'invoice';
 
 const C = {
-  navy: '#0B1733', navy2: '#18243A', gold: '#B8861B', goldBright: '#E6B84A', ivory: '#F7F5EF',
-  ink: '#1B2437', muted: '#667085', line: '#E4E1D6', white: '#FFFFFF', green: '#2F7D55', red: '#B4474D',
+  navy: '#101D35', navy2: '#1D2D4B', gold: '#2A66DB', goldBright: '#6AA2FF', ivory: '#F5F7FB',
+  ink: '#172B4D', muted: '#64748B', line: '#E5EAF1', white: '#FFFFFF', green: '#2F7D55', red: '#B4474D',
 };
 
 const s = StyleSheet.create({
@@ -24,14 +23,14 @@ const s = StyleSheet.create({
   band: { backgroundColor: C.navy, paddingHorizontal: 36, paddingTop: 28, paddingBottom: 22, flexDirection: 'row', justifyContent: 'space-between' },
   goldLine: { height: 3, backgroundColor: C.goldBright },
   brandRow: { flexDirection: 'row', alignItems: 'center' },
-  mark: { width: 34, height: 34, borderRadius: 9, backgroundColor: C.navy2, borderWidth: 1, borderColor: '#33415A', justifyContent: 'center', paddingLeft: 8, marginRight: 11 },
+  mark: { width: 34, height: 34, borderRadius: 9, backgroundColor: C.navy2, borderWidth: 1, borderColor: '#2A3C5E', justifyContent: 'center', paddingLeft: 8, marginRight: 11 },
   bar: { height: 3.5, borderRadius: 2, backgroundColor: C.goldBright, marginVertical: 2.2 },
-  bizName: { fontFamily: 'Times-Bold', fontSize: 19, color: C.white },
+  bizName: { fontFamily: 'Helvetica-Bold', fontSize: 19, color: C.white },
   bizTag: { fontSize: 8, color: C.goldBright, letterSpacing: 1.4, textTransform: 'uppercase', marginTop: 2 },
-  bizMeta: { fontSize: 8, color: '#B8C2D4', marginTop: 7, lineHeight: 1.45, maxWidth: 250 },
-  docType: { fontFamily: 'Times-Bold', fontSize: 23, color: C.goldBright, textAlign: 'right', letterSpacing: 1.5 },
+  bizMeta: { fontSize: 8, color: '#A5B4CF', marginTop: 7, lineHeight: 1.45, maxWidth: 250 },
+  docType: { fontFamily: 'Helvetica-Bold', fontSize: 23, color: C.goldBright, textAlign: 'right', letterSpacing: 1.5 },
   docMetaRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 },
-  docMetaLabel: { fontSize: 8, color: '#8D9AB0', marginRight: 6, width: 52, textAlign: 'right' },
+  docMetaLabel: { fontSize: 8, color: '#7C8CAB', marginRight: 6, width: 52, textAlign: 'right' },
   docMetaValue: { fontSize: 9, color: C.white, fontFamily: 'Helvetica-Bold', width: 92, textAlign: 'right' },
   body: { paddingHorizontal: 36, paddingTop: 20 },
   twoCol: { flexDirection: 'row' },
@@ -64,10 +63,10 @@ const s = StyleSheet.create({
   grand: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: C.navy, borderRadius: 6, paddingVertical: 9, paddingHorizontal: 10, marginTop: 5 },
   grandLabel: { color: C.goldBright, fontFamily: 'Helvetica-Bold', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' },
   grandValue: { color: C.white, fontFamily: 'Helvetica-Bold', fontSize: 12 },
-  balance: { flexDirection: 'row', justifyContent: 'space-between', borderWidth: 1, borderColor: C.goldBright, borderRadius: 6, paddingVertical: 7, paddingHorizontal: 10, marginTop: 5, backgroundColor: '#FFF9E8' },
+  balance: { flexDirection: 'row', justifyContent: 'space-between', borderWidth: 1, borderColor: C.goldBright, borderRadius: 6, paddingVertical: 7, paddingHorizontal: 10, marginTop: 5, backgroundColor: '#EAF1FE' },
   words: { backgroundColor: C.ivory, borderRadius: 6, borderWidth: 1, borderColor: C.line, padding: 10 },
   wordsLabel: { fontSize: 7.5, color: C.gold, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'Helvetica-Bold', marginBottom: 3 },
-  wordsText: { fontFamily: 'Times-Italic', fontSize: 10, lineHeight: 1.4 },
+  wordsText: { fontFamily: 'Helvetica-Oblique', fontSize: 10, lineHeight: 1.4 },
   heading: { fontFamily: 'Helvetica-Bold', fontSize: 8.5, color: C.navy, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 6 },
   payBox: { flexDirection: 'row', borderWidth: 1, borderColor: C.line, borderRadius: 6, padding: 10, marginTop: 16, alignItems: 'center' },
   qr: { width: 74, height: 74, marginRight: 14 },
@@ -105,9 +104,10 @@ function groupServices(services: QuoteService[]) {
   return groups;
 }
 
-export type BillProps = { quote: Quote; business: BusinessProfile; payment: PaymentSettings; kind: BillKind; qr?: string };
+/** `payment` and `qr` are accepted for compatibility but the bill no longer prints payment details or a QR code. */
+export type BillProps = { quote: Quote; business: BusinessProfile; payment?: PaymentSettings; kind: BillKind; qr?: string };
 
-export function BillDocument({ quote, business, payment, kind, qr }: BillProps) {
+export function BillDocument({ quote, business, kind }: BillProps) {
   const { customer, pricing } = quote;
   const dates = quoteDates(customer);
   const advance = quoteAdvance(pricing);
@@ -117,8 +117,6 @@ export function BillDocument({ quote, business, payment, kind, qr }: BillProps) 
   const groups = groupServices(quote.services);
   const schedule = scheduleLines(dates, customer.eventSlots);
   const termLines = business.terms.split('\n').map((t) => t.trim()).filter(Boolean);
-  const bank = bankDetailsText(payment);
-  const showPayBlock = advance.balance > 0 && (payment.upiId || bank);
   const docTitle = kind === 'invoice' ? 'TAX INVOICE' : 'QUOTATION';
   const addressLines = business.address.split('\n').map((l) => l.trim()).filter(Boolean);
   const contact = [business.phone && `Tel: ${business.phone}`, business.email, business.website].filter(Boolean).join('  |  ');
@@ -247,20 +245,7 @@ export function BillDocument({ quote, business, payment, kind, qr }: BillProps) 
             </View>
           </View>
 
-          {/* ---- payment details ---- */}
-          {showPayBlock ? (
-            <View style={s.payBox} wrap={false}>
-              {qr && payment.upiId ? <Image src={qr} style={s.qr} /> : null}
-              <View style={{ flex: 1 }}>
-                <Text style={s.heading}>How to pay</Text>
-                {payment.upiId ? <Text style={s.line}>UPI: <Text style={{ fontFamily: 'Helvetica-Bold' }}>{payment.upiId}</Text>{payment.payeeName ? `  (${payment.payeeName})` : ''}</Text> : null}
-                {qr && payment.upiId ? <Text style={s.lineMuted}>Scan the QR with any UPI app to pay {money(advance.balance)}.</Text> : null}
-                {bank ? <Text style={[s.lineMuted, { marginTop: 4 }]}>{bank}</Text> : null}
-              </View>
-            </View>
-          ) : null}
-
-          {/* ---- terms + signature ---- */}
+          {/* ---- terms ---- */}
           {termLines.length ? (
             <View style={s.terms} wrap={false}>
               <Text style={s.heading}>Terms & conditions</Text>
@@ -269,13 +254,6 @@ export function BillDocument({ quote, business, payment, kind, qr }: BillProps) 
               ))}
             </View>
           ) : null}
-          <View style={s.sign} wrap={false}>
-            <View style={s.signBox}><Text style={[s.signLine, { color: C.muted }]}>Customer acceptance</Text></View>
-            <View style={s.signBox}>
-              <Text style={{ fontFamily: 'Times-Bold', fontSize: 9, marginBottom: 20 }}>For {business.name}</Text>
-              <Text style={s.signLine}>{business.signatory}</Text>
-            </View>
-          </View>
         </View>
 
         {/* ---- footer on every page ---- */}

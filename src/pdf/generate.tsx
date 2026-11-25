@@ -1,7 +1,4 @@
 import { createElement } from 'react';
-import { qrDataUrl } from '@/lib/qr';
-import { buildUpiUri, isValidUpiId } from '@/lib/settings';
-import { quoteAdvance } from '@/lib/pricing';
 import type { BusinessProfile, Invoice, PaymentSettings, Quote } from '@/lib/types';
 import type { BillKind } from './BillDocument';
 
@@ -14,12 +11,7 @@ async function render(element: React.ReactElement): Promise<Blob> {
 
 export async function buildBillBlob(quote: Quote, business: BusinessProfile, payment: PaymentSettings, kind: BillKind): Promise<Blob> {
   const { BillDocument } = await import('./BillDocument');
-  const balance = quoteAdvance(quote.pricing).balance;
-  let qr: string | undefined;
-  if (isValidUpiId(payment.upiId) && balance > 0) {
-    try { qr = await qrDataUrl(buildUpiUri(payment, balance, `Bill ${quote.reference}`), 300); } catch { qr = undefined; }
-  }
-  return render(createElement(BillDocument, { quote, business, payment, kind, qr }));
+  return render(createElement(BillDocument, { quote, business, payment, kind }));
 }
 
 export async function buildReportBlob(title: string, quotes: Quote[], business: BusinessProfile): Promise<Blob> {
